@@ -258,14 +258,6 @@ main { flex: 1; padding-bottom: 36px; }
 .price { font-family: var(--display); font-size: 2rem; font-weight: 800; color: var(--forest); line-height: 1.2; letter-spacing: -.02em; }
 .price small { font-family: var(--font); font-size: .8125rem; font-weight: 600; color: var(--muted); letter-spacing: 0; }
 .range { font-size: .8125rem; color: var(--muted); }
-.mandi-list { margin-top: 10px; }
-.mandi-list li { display: flex; justify-content: space-between; gap: 12px; padding: 9px 2px; font-size: .875rem; }
-.mandi-list li + li { border-top: 1px solid var(--line); }
-.mandi-list .m-name { font-weight: 600; }
-.mandi-list .m-sub { display: block; font-size: .75rem; color: var(--muted); font-weight: 400; }
-.mandi-list .m-price { font-weight: 800; white-space: nowrap; color: var(--forest); }
-.prompt { font-size: 1.0625rem; font-weight: 800; color: var(--forest); }
-.msg { color: var(--muted); font-size: .9375rem; }
 
 /* Skeleton */
 .skeleton { min-height: 150px; position: relative; overflow: hidden; background: #e4ebe5; border: 0; box-shadow: none; }
