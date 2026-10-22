@@ -1,41 +1,15 @@
-/* KrishiDost – app.js (v4, debugged and recomposed)
- *
- * Free / open data sources (no paid keys required):
- *  - Weather forecast ........ Open-Meteo (open-source, CC-BY)
- *  - Rain map ................ RainViewer radar, with automatic fallback to NASA GIBS (GPM IMERG)
- *  - Satellite soil & sun .... NASA POWER (AG community: root-zone soil wetness, rain, sunshine)
- *  - Cyclone / flood events .. NASA EONET (open natural-event tracker)
- *  - River-flow flood signal . Open-Meteo Flood API (Copernicus GloFAS)
- *  - Mandi prices ............ Agmarknet via /api/mandi, with direct fallback to data.gov.in (Govt. of India)
- *  - Farm news ............... Google News RSS via /api/news, with rss2json fallback
- *  - Map ..................... Leaflet + OpenStreetMap / CARTO tiles
- *  - Reverse geocode ......... Nominatim, with BigDataCloud fallback
- *
- * Note: ISRO Bhuvan and IMD do not offer open, browser-callable (CORS) weather APIs,
- * so they are not called directly. The UI points farmers to IMD / CWC for official warnings.
+/* KrishiDost – app.js
+ * Live weather (Open-Meteo), rain radar (RainViewer), map (Leaflet + OpenStreetMap),
+ * live farm news (Google News via /api/news), AI assistant with voice in/out (via /api/assistant),
+ * English/Hindi UI, text-to-speech and crop-specific advice.
  */
 (() => {
   'use strict';
 
   /* ───────────────────────── Config ───────────────────────── */
 
-  const STORAGE_KEY = 'krishidost:v4';
+  const STORAGE_KEY = 'krishidost:v3';
   const REFRESH_MS = 30 * 60 * 1000;
-
-  // data.gov.in public sample key (rate-limited). Replace with your own free key from
-  // https://data.gov.in for reliable use. The /api/mandi endpoint is tried first.
-  // You can also set it without editing this file: window.KRISHIDOST_DATA_GOV_KEY = 'your-key'
-  const DATA_GOV_KEY = window.KRISHIDOST_DATA_GOV_KEY
-    || '579b464db66ec23bdd000001cdd3946e44ce4aad7209ff7b23ac571b';
-  const MANDI_RESOURCE = '9ef84268-d588-465a-a308-a864a43d0070';
-  const MANDI_COMMODITY = {
-    paddy: 'Paddy(Dhan)(Common)',
-    wheat: 'Wheat',
-    cotton: 'Cotton',
-    maize: 'Maize',
-    jute: 'Jute',
-    potato: 'Potato',
-  };
 
   const PLACES = [
     { name: 'Gangadharpur, West Bengal', lat: 22.35, lon: 88.05 },
@@ -65,7 +39,6 @@
     waves: '<path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/>',
     sprout: '<path d="M7 20h10"/><path d="M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"/><path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z"/>',
     news: '<path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/>',
-    store: '<path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M2 7h20"/><path d="M22 7v3a2 2 0 0 1-2 2 2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 16 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 12 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 8 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 4 12a2 2 0 0 1-2-2V7"/>',
     volume: '<path d="M11 4.7 6.9 8.2H3v7.6h3.9L11 19.3z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
     cloudsun: '<path d="M12 2v2M4.93 4.93l1.41 1.41M20 12h2M19.07 4.93l-1.41 1.41M15.95 12.65a4 4 0 0 0-5.93-4.13"/><path d="M13 22H7a5 5 0 1 1 4.9-6H13a3 3 0 0 1 0 6Z"/>',
@@ -80,8 +53,11 @@
     wind: '<path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"/><path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/>',
     thermo: '<path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/>',
     droplet: '<path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/>',
+    mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/>',
+    send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+    sparkles: '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>',
+    stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
     layers: '<path d="m12 2 10 5-10 5L2 7z"/><path d="m2 12 10 5 10-5"/><path d="m2 17 10 5 10-5"/>',
-    tag: '<path d="M12.6 2.6a2 2 0 0 0-1.4-.6H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4z"/><circle cx="7.5" cy="7.5" r=".5"/>',
   };
 
   const icon = (name, size = 20) =>
@@ -100,7 +76,6 @@
       myLocation: 'Use my location',
       mapHint: 'Tap the map to check another location.',
       radarTime: 'Radar updated {time}',
-      radarNasa: 'Rain map from NASA GPM IMERG satellite data.',
       radarFail: 'Rain radar is unavailable right now.',
       locating: 'Finding your location…',
       locDenied: 'Location access was blocked. Search for your place instead.',
@@ -117,15 +92,11 @@
       feelsLike: 'Feels like {t}°C',
       live: 'Live',
       outlookTitle: '14-day disaster outlook',
-      outlookClear: 'No extended rainfall extreme is forecast. Still plan drainage and safe crop storage, and check official IMD updates.',
+      outlookClear: 'No extended cyclone or flood bulletin is available here. Plan drainage and safe crop storage, and check official IMD updates.',
       outlookWatch: 'About {mm} mm of rain is forecast over the next 14 days. Plan drainage, move stored grain to higher ground and follow IMD bulletins.',
       chartLabel: 'Daily rainfall for the next 14 days. Total {mm} mm.',
       chartToday: 'Today',
       chartEnd: 'Day 14',
-      hazardHead: 'Open cyclone and flood events near you',
-      hazardNone: 'NASA EONET lists no open cyclone or flood event near this area.',
-      hazardFail: 'Could not load NASA event data right now.',
-      hazardSource: 'Events: NASA EONET. Always follow IMD and district warnings.',
       yourCrop: 'Your crop',
       pestTitle: 'Pest alert for your crop',
       pestPrompt: 'Choose a crop above for crop-specific checks.',
@@ -143,37 +114,33 @@
       floodMedium: 'Medium',
       floodHigh: 'High',
       floodText: 'Flood risk is currently {level} based on expected rainfall ({mm} mm in 3 days).',
-      floodRiver: 'River flow (GloFAS) is forecast to rise about {x}× in 7 days.',
-      floodNote: 'Rainfall and river-flow estimate. Follow official flood warnings from CWC and your district office.',
-      nasaTitle: 'NASA satellite: soil and sunshine',
-      nasaSoil: 'Root-zone soil wetness {p}%',
-      nasaDry: 'Dry soil',
-      nasaOk: 'Adequate moisture',
-      nasaWet: 'Wet soil',
-      nasaRain7: 'Rain, last 7 days: {mm} mm',
-      nasaSun: 'Sunshine: {v} MJ/m² per day',
-      nasaTemp: 'Average temperature: {t}°C',
-      nasaDate: 'Latest data: {date}',
-      nasaIrrigate: 'Soil is dry and little rain is forecast. Plan irrigation.',
-      nasaHold: 'Soil is already wet. Hold irrigation and keep drains clear.',
-      nasaFine: 'Soil moisture looks adequate. Irrigate only if crops show stress.',
-      nasaFail: 'NASA POWER data is unavailable right now.',
-      nasaSource: 'Source: NASA POWER (satellite and model data, usually a few days behind). Field conditions can differ.',
+      floodNote: 'Rainfall-based estimate. Follow official flood warnings from CWC and your district office.',
       adviceTitle: 'KrishiDost advice',
       advicePrompt: 'Choose a crop above to see your advice.',
       newsTitle: 'Agri news and updates',
       newsEmpty: 'No recent farm stories found for this area.',
       newsFail: 'Could not load the latest news.',
       newsSource: 'Headlines from Google News. Tap a story to read it on the publisher’s site.',
-      mandiTitle: 'Local mandi prices',
-      mandiPrompt: 'Choose a crop above to see today’s mandi prices.',
-      mandiNoState: 'Pick a place in India to see nearby mandi prices.',
-      mandiEmpty: 'No recent {crop} prices were reported in {state}. Try another crop or place.',
-      mandiFail: 'Live mandi prices are unavailable right now. Please try again shortly.',
-      mandiSource: 'Source: Agmarknet via data.gov.in. Prices are in ₹ per quintal and can differ at your mandi.',
-      perQuintal: 'per quintal',
-      range: 'Range ₹{min}–₹{max}',
-      reported: 'Reported {date}',
+      aiTitle: 'Ask KrishiDost AI',
+      aiHint: 'Ask about weather, crops, pests or irrigation. Type, or tap the mic and speak. I answer in text and voice.',
+      aiPlaceholder: 'Type your question…',
+      aiMic: 'Speak your question',
+      aiSend: 'Send',
+      aiStop: 'Stop voice',
+      aiListening: 'Listening… speak now',
+      aiThinking: 'Thinking…',
+      aiSpeaking: 'Speaking…',
+      aiNote: 'AI can make mistakes. Follow pesticide labels and confirm with your local agriculture office (KVK).',
+      aiNotSetup: 'The assistant is not set up on this site yet.',
+      aiFail: 'Sorry, I could not answer right now. Please try again.',
+      aiNoVoiceIn: 'Voice input is not supported in this browser, so please type your question.',
+      aiNoVoiceOut: 'Voice replies are not supported in this browser.',
+      micDenied: 'Microphone access was blocked. You can type instead.',
+      micError: 'Voice input failed. Please try again or type.',
+      aiQ1: 'Should I spray today?',
+      aiQ2: 'When should I irrigate?',
+      aiQ3: 'Will it rain this week?',
+      aiQ4: 'Is my crop at risk?',
       retry: 'Try again',
       listen: 'Listen',
       dialogTitle: 'Choose your place',
@@ -203,7 +170,6 @@
       myLocation: 'मेरी जगह',
       mapHint: 'दूसरी जगह देखने के लिए नक्शे पर टैप करें।',
       radarTime: 'रडार अपडेट {time}',
-      radarNasa: 'वर्षा का नक्शा NASA GPM IMERG उपग्रह डेटा से।',
       radarFail: 'वर्षा रडार अभी उपलब्ध नहीं है।',
       locating: 'आपकी जगह खोजी जा रही है…',
       locDenied: 'स्थान की अनुमति नहीं मिली। अपनी जगह खोजकर चुनें।',
@@ -220,15 +186,11 @@
       feelsLike: 'महसूस हो रहा है {t}°C',
       live: 'लाइव',
       outlookTitle: '14 दिन का आपदा पूर्वानुमान',
-      outlookClear: 'अगले 14 दिनों में अत्यधिक वर्षा का अनुमान नहीं है। फिर भी निकासी और फसल के सुरक्षित भंडारण की योजना बनाएं, और IMD की आधिकारिक सूचनाएं देखें।',
+      outlookClear: 'यहां कोई लंबा चक्रवात या बाढ़ बुलेटिन उपलब्ध नहीं है। निकासी और फसल के सुरक्षित भंडारण की योजना बनाएं, और IMD की आधिकारिक सूचनाएं देखें।',
       outlookWatch: 'अगले 14 दिनों में लगभग {mm} मिमी बारिश का अनुमान है। निकासी की योजना बनाएं, भंडारित अनाज ऊंची जगह रखें और IMD की सूचनाएं देखें।',
       chartLabel: 'अगले 14 दिनों की दैनिक वर्षा। कुल {mm} मिमी।',
       chartToday: 'आज',
       chartEnd: '14वां दिन',
-      hazardHead: 'आपके पास चल रहे चक्रवात और बाढ़ की घटनाएं',
-      hazardNone: 'NASA EONET में इस क्षेत्र के पास कोई चक्रवात या बाढ़ की घटना दर्ज नहीं है।',
-      hazardFail: 'NASA की घटना जानकारी अभी लोड नहीं हो सकी।',
-      hazardSource: 'घटनाएं: NASA EONET। हमेशा IMD और जिला प्रशासन की चेतावनी मानें।',
       yourCrop: 'आपकी फसल',
       pestTitle: 'आपकी फसल के लिए कीट चेतावनी',
       pestPrompt: 'फसल-विशेष जांच के लिए ऊपर से फसल चुनें।',
@@ -246,37 +208,33 @@
       floodMedium: 'मध्यम',
       floodHigh: 'अधिक',
       floodText: 'अपेक्षित वर्षा (3 दिन में {mm} मिमी) के आधार पर बाढ़ का खतरा अभी {level} है।',
-      floodRiver: 'नदी का प्रवाह (GloFAS) 7 दिनों में लगभग {x} गुना बढ़ने का अनुमान है।',
-      floodNote: 'यह वर्षा और नदी प्रवाह पर आधारित अनुमान है। CWC और जिला कार्यालय की आधिकारिक चेतावनी देखें।',
-      nasaTitle: 'NASA उपग्रह: मिट्टी और धूप',
-      nasaSoil: 'जड़ क्षेत्र की मिट्टी में नमी {p}%',
-      nasaDry: 'सूखी मिट्टी',
-      nasaOk: 'पर्याप्त नमी',
-      nasaWet: 'गीली मिट्टी',
-      nasaRain7: 'पिछले 7 दिनों की बारिश: {mm} मिमी',
-      nasaSun: 'धूप: {v} MJ/m² प्रतिदिन',
-      nasaTemp: 'औसत तापमान: {t}°C',
-      nasaDate: 'ताज़ा डेटा: {date}',
-      nasaIrrigate: 'मिट्टी सूखी है और बारिश कम होने का अनुमान है। सिंचाई की योजना बनाएं।',
-      nasaHold: 'मिट्टी पहले से गीली है। सिंचाई रोकें और नालियां साफ रखें।',
-      nasaFine: 'मिट्टी की नमी ठीक लग रही है। फसल में तनाव दिखे तभी सिंचाई करें।',
-      nasaFail: 'NASA POWER का डेटा अभी उपलब्ध नहीं है।',
-      nasaSource: 'स्रोत: NASA POWER (उपग्रह और मॉडल डेटा, आमतौर पर कुछ दिन पुराना)। खेत की स्थिति अलग हो सकती है।',
+      floodNote: 'यह वर्षा पर आधारित अनुमान है। CWC और जिला कार्यालय की आधिकारिक चेतावनी देखें।',
       adviceTitle: 'कृषिदोस्त सलाह',
       advicePrompt: 'सलाह देखने के लिए ऊपर से फसल चुनें।',
       newsTitle: 'कृषि समाचार और अपडेट',
       newsEmpty: 'इस क्षेत्र के लिए हाल की कृषि खबरें नहीं मिलीं।',
       newsFail: 'ताज़ा खबरें लोड नहीं हो सकीं।',
       newsSource: 'शीर्षक Google News से हैं। पूरी खबर प्रकाशक की साइट पर पढ़ने के लिए टैप करें।',
-      mandiTitle: 'स्थानीय मंडी भाव',
-      mandiPrompt: 'आज के मंडी भाव देखने के लिए ऊपर से फसल चुनें।',
-      mandiNoState: 'पास की मंडी के भाव देखने के लिए भारत में कोई जगह चुनें।',
-      mandiEmpty: '{state} में {crop} के हाल के भाव दर्ज नहीं हुए। दूसरी फसल या जगह आजमाएं।',
-      mandiFail: 'लाइव मंडी भाव अभी उपलब्ध नहीं हैं। कृपया थोड़ी देर बाद कोशिश करें।',
-      mandiSource: 'स्रोत: Agmarknet, data.gov.in के माध्यम से। भाव ₹ प्रति क्विंटल में हैं और आपकी मंडी में अलग हो सकते हैं।',
-      perQuintal: 'प्रति क्विंटल',
-      range: 'दायरा ₹{min}–₹{max}',
-      reported: 'दर्ज: {date}',
+      aiTitle: 'कृषिदोस्त AI से पूछें',
+      aiHint: 'मौसम, फसल, कीट या सिंचाई के बारे में पूछें। लिखें, या माइक दबाकर बोलें। मैं लिखकर और बोलकर जवाब दूंगा।',
+      aiPlaceholder: 'अपना सवाल लिखें…',
+      aiMic: 'बोलकर पूछें',
+      aiSend: 'भेजें',
+      aiStop: 'आवाज़ रोकें',
+      aiListening: 'सुन रहा हूं… अब बोलें',
+      aiThinking: 'सोच रहा हूं…',
+      aiSpeaking: 'बोल रहा हूं…',
+      aiNote: 'AI से गलती हो सकती है। कीटनाशक के लेबल का पालन करें और अपने कृषि कार्यालय (KVK) से पुष्टि करें।',
+      aiNotSetup: 'इस साइट पर सहायक अभी चालू नहीं किया गया है।',
+      aiFail: 'माफ़ कीजिए, अभी जवाब नहीं दे सका। कृपया फिर कोशिश करें।',
+      aiNoVoiceIn: 'इस ब्राउज़र में आवाज़ से इनपुट उपलब्ध नहीं है, कृपया सवाल लिखें।',
+      aiNoVoiceOut: 'इस ब्राउज़र में आवाज़ में जवाब उपलब्ध नहीं है।',
+      micDenied: 'माइक की अनुमति नहीं मिली। आप लिखकर पूछ सकते हैं।',
+      micError: 'आवाज़ से इनपुट विफल रहा। फिर कोशिश करें या लिखें।',
+      aiQ1: 'क्या आज छिड़काव करूं?',
+      aiQ2: 'सिंचाई कब करूं?',
+      aiQ3: 'इस हफ्ते बारिश होगी?',
+      aiQ4: 'क्या मेरी फसल को खतरा है?',
       retry: 'फिर कोशिश करें',
       listen: 'सुनें',
       dialogTitle: 'अपनी जगह चुनें',
@@ -357,16 +315,12 @@
     status: 'loading', // loading | ready | error
     radarOn: true,
     news: { key: '', status: 'idle', items: [], at: 0 },
-    mandi: null,   // { key, status: loading|ready|empty|error|nostate, data }
-    nasa: null,    // { key, status: loading|ready|error, data }
-    hazards: null, // { key, status: loading|ready|error, items }
-    river: null,   // { key, status: loading|ready|error, data }
+    chat: { messages: [], busy: false, listening: false, speaking: false, draft: '' },
   };
 
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-    if (saved.place && typeof saved.place.name === 'string'
-      && Number.isFinite(saved.place.lat) && Number.isFinite(saved.place.lon)) state.place = saved.place;
+    if (saved.place && Number.isFinite(saved.place.lat) && Number.isFinite(saved.place.lon)) state.place = saved.place;
     if (saved.crop && CROPS[saved.crop]) state.crop = saved.crop;
     if (saved.lang === 'hi' || saved.lang === 'en') state.lang = saved.lang;
     else if ((navigator.language || '').toLowerCase().startsWith('hi')) state.lang = 'hi';
@@ -387,11 +341,9 @@
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
   const li = () => (state.lang === 'hi' ? 1 : 0);
   const locale = () => (state.lang === 'hi' ? 'hi-IN' : 'en-IN');
-  const fmtNum = (n) => new Intl.NumberFormat('en-IN').format(Math.round(n));
-  const placeKey = () => `${state.place.lat.toFixed(3)},${state.place.lon.toFixed(3)}`;
 
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const safeUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : '#');
+  const safeUrl = (u) => (/^https?:\/\//i.test(u) ? u : '#');
 
   const t = (key, vars = {}) => {
     let s = (I18N[state.lang] && I18N[state.lang][key]) ?? I18N.en[key] ?? key;
@@ -402,18 +354,17 @@
   const shortName = (name) => String(name).split(',')[0].trim();
   const fmtTime = (d) => d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' });
   const weekday = (d) => d.toLocaleDateString(locale(), { weekday: 'long' });
-  const fmtDay = (d) => (Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(locale(), { day: 'numeric', month: 'short' }));
 
   function ago(value) {
     const d = new Date(value);
-    if (!value || Number.isNaN(d.getTime())) return '';
+    if (Number.isNaN(d.getTime())) return '';
     const diff = (d.getTime() - Date.now()) / 1000;
     const rtf = new Intl.RelativeTimeFormat(locale(), { numeric: 'auto' });
     const mins = Math.round(diff / 60);
     if (Math.abs(mins) < 60) return rtf.format(Math.min(mins, 0), 'minute');
     const hrs = Math.round(diff / 3600);
-    if (Math.abs(hrs) < 24) return rtf.format(Math.min(hrs, 0), 'hour');
-    return rtf.format(Math.min(Math.round(diff / 86400), 0), 'day');
+    if (Math.abs(hrs) < 24) return rtf.format(hrs, 'hour');
+    return rtf.format(Math.round(diff / 86400), 'day');
   }
 
   function region() {
@@ -441,7 +392,6 @@
   let toastTimer;
   function toast(msg) {
     const el = $('#toast');
-    if (!el) return;
     el.textContent = msg;
     el.hidden = false;
     clearTimeout(toastTimer);
@@ -474,18 +424,6 @@
 
   const wxTone = (code) => (code <= 2 ? 'sun' : code >= 95 ? 'storm' : code >= 51 ? 'rain' : 'cloud');
 
-  const FLOOD_RANK = { Low: 0, Medium: 1, High: 2 };
-
-  function riverSignal() {
-    const r = state.river;
-    if (!r || r.status !== 'ready' || !r.data || r.key !== placeKey()) return null;
-    const { peak, rise } = r.data;
-    let level = 'Low';
-    if (rise >= 3 && peak >= 20) level = 'High';
-    else if (rise >= 1.8 && peak >= 10) level = 'Medium';
-    return { level, rise };
-  }
-
   function derive(d) {
     const days = d.daily.time.map((date, i) => ({
       date: new Date(`${date}T00:00:00`),
@@ -498,24 +436,20 @@
     const next3 = days.slice(0, 3);
     const rain3 = next3.reduce((s, x) => s + x.rain, 0);
     const rain14 = days.reduce((s, x) => s + x.rain, 0);
-    const maxDay14 = Math.max(0, ...days.map((x) => x.rain));
-    const maxDay3 = Math.max(0, ...next3.map((x) => x.rain));
+    const maxDay = Math.max(0, ...days.map((x) => x.rain));
     const stormSoon = next3.some((x) => x.code >= 95 || x.rain >= 65);
 
-    // Flood risk is a 3-day rainfall estimate, raised by the GloFAS river-flow signal if present.
     let flood = 'Low';
-    if (rain3 >= 150 || maxDay3 >= 100) flood = 'High';
-    else if (rain3 >= 60 || maxDay3 >= 50) flood = 'Medium';
-    const river = riverSignal();
-    if (river && FLOOD_RANK[river.level] > FLOOD_RANK[flood]) flood = river.level;
+    if (rain3 >= 150 || maxDay >= 100) flood = 'High';
+    else if (rain3 >= 60 || maxDay >= 50) flood = 'Medium';
 
     const wetDays = next3.filter((x) => x.prob >= 50 || x.rain >= 5).length;
     const humidity = d.current.relative_humidity_2m ?? 0;
 
     return {
-      days, next3, rain3, rain14, stormSoon, flood, wetDays, river,
+      days, next3, rain3, rain14, stormSoon, flood, wetDays,
       warn: stormSoon || flood === 'High',
-      watch14: rain14 >= 250 || maxDay14 >= 100,
+      watch14: rain14 >= 250 || maxDay >= 100,
       pestHigh: wetDays >= 2 || (humidity >= 85 && wetDays >= 1),
       now: {
         temp: d.current.temperature_2m ?? 0,
@@ -544,22 +478,46 @@
 
   function clearSpeaking() { $$('.is-speaking').forEach((b) => b.classList.remove('is-speaking')); }
 
-  function speak(text, btn) {
+  // Hindi text (Devanagari) is read with a Hindi voice, everything else with Indian English.
+  const speechLang = (text) => (/[\u0900-\u097F]/.test(text) ? 'hi-IN' : 'en-IN');
+
+  // Some mobile browsers only allow speech after a tap, so "warm up" the engine inside the tap.
+  function unlockSpeech() {
+    if (!canSpeak) return;
+    try {
+      const u = new SpeechSynthesisUtterance(' ');
+      u.volume = 0;
+      window.speechSynthesis.speak(u);
+    } catch (_) { /* ignore */ }
+  }
+
+  function stopSpeaking() {
+    currentUtter = null;
+    if (canSpeak) window.speechSynthesis.cancel();
+    clearSpeaking();
+    if (state.chat.speaking) { state.chat.speaking = false; updateChat(false); }
+  }
+
+  function speak(text, btn, opts = {}) {
     if (!canSpeak || !text) return;
     const same = btn && btn.classList.contains('is-speaking');
-    currentUtter = null;
-    window.speechSynthesis.cancel();
-    clearSpeaking();
+    stopSpeaking();
     if (same) return;
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = locale();
+    u.lang = speechLang(text);
     const voices = window.speechSynthesis.getVoices();
     const want = u.lang.toLowerCase();
     const voice = voices.find((v) => v.lang.replace('_', '-').toLowerCase() === want)
       || voices.find((v) => v.lang.toLowerCase().startsWith(want.slice(0, 2)));
     if (voice) u.voice = voice;
     currentUtter = u;
-    const done = () => { if (currentUtter === u) { clearSpeaking(); currentUtter = null; } };
+    u.onstart = () => { if (currentUtter === u && opts.onstart) opts.onstart(); };
+    const done = () => {
+      if (currentUtter !== u) return;
+      currentUtter = null;
+      clearSpeaking();
+      if (opts.onend) opts.onend();
+    };
     u.onend = done;
     u.onerror = done;
     if (btn) btn.classList.add('is-speaking');
@@ -577,8 +535,6 @@
     : '');
 
   /* ───────────────────────── Cards ───────────────────────── */
-
-  const skLines = (n = 3) => Array.from({ length: n }, (_, i) => `<div class="sk-line${i === n - 1 ? ' short' : ''}"></div>`).join('');
 
   function statusCard(m) {
     const warn = m.warn;
@@ -620,7 +576,6 @@
   function rainChart(m) {
     const w = 300, h = 64, gap = 4;
     const n = Math.min(14, m.days.length);
-    if (!n) return '';
     const bw = (w - gap * (n - 1)) / n;
     const max = Math.max(20, ...m.days.slice(0, n).map((d) => d.rain));
     const bars = m.days.slice(0, n).map((d, i) => {
@@ -632,41 +587,16 @@
       <div class="chart-axis" aria-hidden="true"><span>${esc(t('chartToday'))}</span><span>${esc(t('chartEnd'))}</span></div>`;
   }
 
-  function hazardBlock() {
-    const h = state.hazards;
-    let inner;
-    if (!h || h.status === 'loading') {
-      inner = skLines(2);
-    } else if (h.status === 'error') {
-      inner = `<p class="note">${esc(t('hazardFail'))}</p>`;
-    } else if (!h.items.length) {
-      inner = `<p class="note">${esc(t('hazardNone'))}</p>`;
-    } else {
-      inner = `<ul class="news-list">${h.items.map((x) => {
-        const meta = [x.cat, ago(x.date)].filter(Boolean).join(' · ');
-        return `
-        <li class="news-row">
-          <a class="news-link" href="${esc(safeUrl(x.link))}" target="_blank" rel="noopener noreferrer">
-            <span class="news-title">${esc(x.title)}</span>
-            <span class="news-meta">${esc(meta)}</span>
-          </a>
-        </li>`;
-      }).join('')}</ul><p class="note">${esc(t('hazardSource'))}</p>`;
-    }
-    return `<p class="sub">${esc(t('hazardHead'))}</p>${inner}`;
-  }
-
   function outlookCard(m) {
     const text = m.watch14 ? t('outlookWatch', { mm: Math.round(m.rain14) }) : t('outlookClear');
     return `
-      <section class="card col-5" id="card-outlook" aria-labelledby="h-outlook">
+      <section class="card col-5" aria-labelledby="h-outlook">
         <div class="card-head">
           <span class="badge-icon">${icon('cloud', 22)}</span>
           <h2 id="h-outlook">${esc(t('outlookTitle'))}</h2>
         </div>
         <p class="lead">${esc(text)}</p>
         ${rainChart(m)}
-        ${hazardBlock()}
       </section>`;
   }
 
@@ -738,20 +668,19 @@
   function floodCard(m) {
     const level = t(`flood${m.flood}`);
     const cls = { Low: 'risk--low', Medium: 'risk--medium', High: 'risk--high' }[m.flood];
-    const riverLine = m.river && m.river.rise >= 1.8
-      ? `<p class="body">${esc(t('floodRiver', { x: m.river.rise.toFixed(1) }))}</p>` : '';
     return `
-      <section class="card col-4" id="card-flood" aria-labelledby="h-flood">
+      <section class="card col-4" aria-labelledby="h-flood">
         <div class="card-head">
           <span class="badge-icon is-rain">${icon('waves', 22)}</span>
           <h2 id="h-flood">${esc(t('floodTitle'))}</h2>
         </div>
         <span class="risk ${cls}">${esc(level)}</span>
         <p class="body">${esc(t('floodText', { level: level.toLowerCase(), mm: Math.round(m.rain3) }))}</p>
-        ${riverLine}
         <p class="note">${esc(t('floodNote'))}</p>
       </section>`;
   }
+
+  const skLines = (n = 3) => Array.from({ length: n }, (_, i) => `<div class="sk-line${i === n - 1 ? ' short' : ''}"></div>`).join('');
 
   function newsCard() {
     const n = state.news;
@@ -789,97 +718,205 @@
       </section>`;
   }
 
-  function mandiCard() {
-    const m = state.mandi;
-    const crop = CROPS[state.crop];
-    let inner;
-    let speech = '';
+  /* ───────────────────────── AI assistant (text + voice in, text + voice out) ───────────────────────── */
 
-    if (!crop) {
-      inner = `<p class="prompt">${esc(t('mandiPrompt'))}</p>`;
-    } else if (!m || m.status === 'loading') {
-      inner = skLines(4);
-    } else if (m.status === 'nostate') {
-      inner = `<p class="msg">${esc(t('mandiNoState'))}</p>`;
-    } else if (m.status === 'error') {
-      inner = `<p class="msg">${esc(t('mandiFail'))}</p><p class="meta"><button type="button" class="link-btn" data-action="mandi-retry">${icon('refresh', 14)} ${esc(t('retry'))}</button></p>`;
-    } else if (m.status === 'empty') {
-      inner = `<p class="msg">${esc(t('mandiEmpty', { crop: crop.name[li()], state: region().state || '' }))}</p>`;
-    } else {
-      const list = m.data.markets;
-      const top = list[0];
-      const rows = list.slice(1, 5).map((x) => `
-        <li>
-          <span class="m-name">${esc(x.market)}<span class="m-sub">${esc(x.district || '')}${x.date ? ` · ${esc(fmtDay(new Date(x.date)))}` : ''}</span></span>
-          <span class="m-price">₹${fmtNum(x.modal)}</span>
-        </li>`).join('');
-      speech = `${crop.name[li()]}: ${top.market}, ₹${fmtNum(top.modal)} ${t('perQuintal')}`;
-      inner = `
-        <div class="mandi-top">
-          <p class="market">${esc(top.market)}${top.district ? `, ${esc(top.district)}` : ''}</p>
-          <p class="price">₹${fmtNum(top.modal)} <small>${esc(t('perQuintal'))}</small></p>
-          <p class="range">${esc(t('range', { min: fmtNum(top.min), max: fmtNum(top.max) }))}${top.date ? ` · ${esc(t('reported', { date: fmtDay(new Date(top.date)) }))}` : ''}</p>
-        </div>
-        ${rows ? `<ul class="mandi-list">${rows}</ul>` : ''}
-        <p class="note">${esc(t('mandiSource'))}</p>`;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let recognition = null;
+
+  function assistantContext() {
+    const ctx = {
+      place: state.place.name,
+      appLanguage: state.lang === 'hi' ? 'Hindi' : 'English',
+      crop: state.crop ? CROPS[state.crop].name[0] : null,
+      today: new Date().toLocaleDateString('en-CA'),
+    };
+    if (state.data) {
+      const m = derive(state.data);
+      const cond = (code) => I18N.en[wxKey(code)];
+      ctx.now = {
+        tempC: Math.round(m.now.temp), feelsLikeC: Math.round(m.now.feels),
+        humidityPct: m.now.hum, windKmh: Math.round(m.now.wind), condition: cond(m.now.code),
+      };
+      ctx.next3Days = m.next3.map((d) => ({
+        date: d.date.toLocaleDateString('en-CA'),
+        maxC: Math.round(d.tMax), minC: Math.round(d.tMin),
+        rainChancePct: d.prob, rainMm: Math.round(d.rain), condition: cond(d.code),
+      }));
+      ctx.rainNext14DaysMm = Math.round(m.rain14);
+      ctx.floodRisk = m.flood;
+      ctx.stormLikelyNext3Days = m.stormSoon;
+      ctx.pestRisk = m.pestHigh ? 'elevated' : 'low';
     }
+    return ctx;
+  }
 
+  function chatLogHTML() {
+    const c = state.chat;
+    if (!c.messages.length && !c.busy) return `<p class="chat-hint">${esc(t('aiHint'))}</p>`;
+    const rows = c.messages.map((m) => {
+      const bot = m.role !== 'user';
+      const replay = bot && canSpeak
+        ? `<button type="button" class="icon-btn" data-speak="${registerSpeech(m.text)}" aria-label="${esc(t('listen'))}">${icon('volume', 18)}</button>`
+        : '';
+      return `<div class="msg-row ${bot ? 'is-bot' : 'is-user'}${m.error ? ' is-error' : ''}"><p class="bubble">${esc(m.text)}</p>${replay}</div>`;
+    }).join('');
+    const typing = c.busy
+      ? `<div class="msg-row is-bot"><p class="bubble typing" aria-label="${esc(t('aiThinking'))}"><i></i><i></i><i></i></p></div>`
+      : '';
+    return rows + typing;
+  }
+
+  function assistantCard() {
+    const c = state.chat;
+    const prompts = ['aiQ1', 'aiQ2', 'aiQ3', 'aiQ4']
+      .map((k) => `<button type="button" class="chip" data-ai-prompt="${esc(t(k))}">${esc(t(k))}</button>`).join('');
+    const notes = [t('aiNote'), SR ? '' : t('aiNoVoiceIn'), canSpeak ? '' : t('aiNoVoiceOut')].filter(Boolean).join(' ');
     return `
-      <section class="card col-5" id="card-mandi" aria-labelledby="h-mandi">
+      <section class="card col-5" id="card-assistant" aria-labelledby="h-ai">
         <div class="card-head">
-          <span class="badge-icon is-gold">${icon('store', 22)}</span>
-          <h2 id="h-mandi">${esc(t('mandiTitle'))}</h2>
-          ${crop ? `<span class="live">${esc(t('live'))}</span>` : ''}
-          ${speech ? speakBtn(speech) : ''}
+          <span class="badge-icon is-ai">${icon('sparkles', 22)}</span>
+          <h2 id="h-ai">${esc(t('aiTitle'))}</h2>
+          <span class="live live--ai">AI</span>
         </div>
-        ${inner}
+        <div class="chat-log" id="chat-log" role="log" aria-live="polite">${chatLogHTML()}</div>
+        <p class="chat-status" id="chat-status" role="status"></p>
+        <div class="chat-prompts" id="chat-prompts"${c.messages.length ? ' hidden' : ''}>${prompts}</div>
+        <form class="chat-form" id="chat-form" autocomplete="off">
+          ${SR ? `<button type="button" class="round-btn${c.listening ? ' is-listening' : ''}" id="chat-mic" data-ai-mic aria-pressed="${c.listening}" aria-label="${esc(t('aiMic'))}">${icon('mic', 22)}</button>` : ''}
+          <input id="chat-input" type="text" maxlength="500" placeholder="${esc(t('aiPlaceholder'))}" aria-label="${esc(t('aiPlaceholder'))}" value="${esc(c.draft)}">
+          <button type="submit" class="round-btn primary" id="chat-send" aria-label="${esc(t('aiSend'))}"${c.busy ? ' disabled' : ''}>${icon('send', 20)}</button>
+          <button type="button" class="round-btn" id="chat-stop" data-ai-stop aria-label="${esc(t('aiStop'))}"${c.speaking ? '' : ' hidden'}>${icon('stop', 20)}</button>
+        </form>
+        <p class="note">${esc(notes)}</p>
       </section>`;
   }
 
-  function nasaCard() {
-    const n = state.nasa;
-    let inner;
-    let speech = '';
-    if (!n || n.status === 'loading') {
-      inner = skLines(4);
-    } else if (n.status === 'error') {
-      inner = `<p class="msg">${esc(t('nasaFail'))}</p><p class="meta"><button type="button" class="link-btn" data-action="nasa-retry">${icon('refresh', 14)} ${esc(t('retry'))}</button></p>`;
-    } else {
-      const d = n.data;
-      const m = state.data ? derive(state.data) : null;
-      let badge = '';
-      let adviceKey = null;
-      if (d.soil != null) {
-        let levelKey = 'nasaOk';
-        let cls = 'risk--low';
-        if (d.soil < 0.4) { levelKey = 'nasaDry'; cls = 'risk--medium'; adviceKey = (!m || m.rain3 < 10) ? 'nasaIrrigate' : 'nasaFine'; }
-        else if (d.soil > 0.7) { levelKey = 'nasaWet'; cls = 'risk--medium'; adviceKey = 'nasaHold'; }
-        else adviceKey = 'nasaFine';
-        badge = `<span class="risk ${cls}">${esc(t(levelKey))}</span>`;
-      }
-      const lines = [];
-      if (d.soil != null) lines.push(t('nasaSoil', { p: Math.round(d.soil * 100) }));
-      lines.push(t('nasaRain7', { mm: Math.round(d.rain7) }));
-      if (d.sun != null) lines.push(t('nasaSun', { v: d.sun.toFixed(1) }));
-      if (d.temp != null) lines.push(t('nasaTemp', { t: d.temp.toFixed(1) }));
-      const advice = adviceKey ? t(adviceKey) : '';
-      speech = [advice, lines[0]].filter(Boolean).join('. ');
-      inner = `
-        ${badge}
-        ${advice ? `<p class="lead">${esc(advice)}</p>` : ''}
-        <ul class="now">${lines.map((x) => `<li><span>${esc(x)}</span></li>`).join('')}</ul>
-        <p class="meta"><span>${esc(t('nasaDate', { date: fmtDay(d.lastDate) }))}</span></p>
-        <p class="note">${esc(t('nasaSource'))}</p>`;
+  // Update only the parts of the chat that change, so typing and focus are never lost.
+  function updateChat(scroll = true) {
+    const log = $('#chat-log');
+    if (!log) return;
+    const c = state.chat;
+    log.innerHTML = chatLogHTML();
+    if (scroll) log.scrollTop = log.scrollHeight;
+    const status = $('#chat-status');
+    status.textContent = c.listening ? t('aiListening') : c.busy ? t('aiThinking') : c.speaking ? t('aiSpeaking') : '';
+    const mic = $('#chat-mic');
+    if (mic) { mic.classList.toggle('is-listening', c.listening); mic.setAttribute('aria-pressed', String(c.listening)); }
+    $('#chat-send').disabled = c.busy;
+    $('#chat-stop').hidden = !c.speaking;
+    $('#chat-prompts').hidden = c.messages.length > 0;
+  }
+
+  function setDraft(value) {
+    state.chat.draft = value;
+    const input = $('#chat-input');
+    if (input) input.value = value;
+  }
+
+  function abortListening() {
+    if (!recognition) return;
+    const r = recognition;
+    recognition = null;
+    try { r.abort(); } catch (_) { /* ignore */ }
+    state.chat.listening = false;
+  }
+
+  function speakAssistant(text) {
+    speak(text, null, {
+      onstart: () => { state.chat.speaking = true; updateChat(false); },
+      onend: () => { state.chat.speaking = false; updateChat(false); },
+    });
+  }
+
+  async function askAssistant() {
+    const history = state.chat.messages
+      .filter((m) => !m.error)
+      .slice(-8)
+      .map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text }));
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 30000);
+    try {
+      const res = await fetch('/api/assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: history, context: assistantContext(), lang: state.lang }),
+        signal: ctrl.signal,
+      });
+      const j = await res.json().catch(() => ({}));
+      if (res.ok && j.reply) return { text: j.reply };
+      return { text: t(j.error === 'not_configured' || res.status === 404 ? 'aiNotSetup' : 'aiFail'), error: true };
+    } catch (_) {
+      return { text: t('aiFail'), error: true };
+    } finally {
+      clearTimeout(timer);
     }
-    return `
-      <section class="card col-12" id="card-nasa" aria-labelledby="h-nasa">
-        <div class="card-head">
-          <span class="badge-icon">${icon('layers', 22)}</span>
-          <h2 id="h-nasa">${esc(t('nasaTitle'))}</h2>
-          ${speech ? speakBtn(speech) : ''}
-        </div>
-        ${inner}
-      </section>`;
+  }
+
+  async function sendChat(raw) {
+    const text = String(raw || '').trim().slice(0, 500);
+    const c = state.chat;
+    if (!text || c.busy) return;
+    abortListening();
+    unlockSpeech();
+    stopSpeaking();
+    c.messages.push({ role: 'user', text });
+    c.busy = true;
+    setDraft('');
+    updateChat();
+
+    const reply = await askAssistant();
+
+    c.messages.push({ role: 'assistant', text: reply.text, error: !!reply.error });
+    c.busy = false;
+    updateChat();
+    speakAssistant(reply.text); // every answer is also spoken aloud
+  }
+
+  function toggleMic() {
+    if (!SR) { toast(t('aiNoVoiceIn')); return; }
+    const c = state.chat;
+    if (c.listening && recognition) { recognition.stop(); return; }
+    unlockSpeech();
+    stopSpeaking();
+
+    const rec = new SR();
+    recognition = rec;
+    rec.lang = locale();
+    rec.interimResults = true;
+    rec.continuous = false;
+    rec.maxAlternatives = 1;
+    let finalText = '';
+
+    rec.onresult = (e) => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) finalText += r[0].transcript; else interim += r[0].transcript;
+      }
+      setDraft((finalText + interim).trim());
+    };
+    rec.onerror = (e) => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') toast(t('micDenied'));
+      else if (e.error !== 'aborted' && e.error !== 'no-speech') toast(t('micError'));
+    };
+    rec.onend = () => {
+      const mine = recognition === rec;
+      if (mine) recognition = null;
+      c.listening = false;
+      updateChat(false);
+      if (!mine) return; // cancelled on purpose (e.g. a prompt was tapped or language changed)
+      const text = (finalText || c.draft).trim();
+      if (text) sendChat(text);
+    };
+
+    try {
+      rec.start();
+      c.listening = true;
+      updateChat(false);
+    } catch (_) {
+      recognition = null;
+      toast(t('micError'));
+    }
   }
 
   const skeleton = () => `
@@ -898,7 +935,6 @@
 
   function render() {
     const root = $('#content');
-    if (!root) return;
     speechTexts.clear();
     if (!state.data) {
       root.innerHTML = state.status === 'error' ? errorCard() : skeleton();
@@ -907,35 +943,15 @@
     const m = derive(state.data);
     root.innerHTML = `<div class="grid">
       ${statusCard(m)}${outlookCard(m)}${cropPicker()}${pestCard(m)}${adviceCard(m)}
-      ${forecastCard(m)}${floodCard(m)}${newsCard()}${mandiCard()}${nasaCard()}
+      ${forecastCard(m)}${floodCard(m)}${newsCard()}${assistantCard()}
     </div>`;
   }
 
   // Replace a single card without re-rendering (and re-focusing) the whole page.
-  const CARD_BUILDERS = {
-    news: () => newsCard(),
-    mandi: () => mandiCard(),
-    nasa: () => nasaCard(),
-    outlook: (m) => outlookCard(m),
-    flood: (m) => floodCard(m),
-  };
-  const NEEDS_DERIVED = new Set(['outlook', 'flood']);
-
   function refreshCard(which) {
     const el = $(`#card-${which}`);
-    const build = CARD_BUILDERS[which];
-    if (!el || !build) return;
-    let m = null;
-    if (NEEDS_DERIVED.has(which)) {
-      if (!state.data) return;
-      m = derive(state.data);
-    }
-    el.outerHTML = build(m);
-    // A changed flood signal can also change the top status card.
-    if (which === 'flood' && state.data) {
-      const st = $('.card--status');
-      if (st) st.outerHTML = statusCard(derive(state.data));
-    }
+    if (!el) return;
+    el.outerHTML = newsCard();
   }
 
   function applyStatic() {
@@ -945,19 +961,15 @@
     $$('[data-i18n-aria]').forEach((el) => { el.setAttribute('aria-label', t(el.dataset.i18nAria)); });
     $$('[data-icon]').forEach((el) => { el.innerHTML = icon(el.dataset.icon, Number(el.dataset.size) || 18); });
     const lb = $('#lang-toggle');
-    if (lb) {
-      lb.textContent = state.lang === 'en' ? 'हिन्दी' : 'English';
-      lb.lang = state.lang === 'en' ? 'hi' : 'en';
-    }
+    lb.textContent = state.lang === 'en' ? 'हिन्दी' : 'English';
+    lb.lang = state.lang === 'en' ? 'hi' : 'en';
     updatePlaceUI();
     updateCaption();
   }
 
   function updatePlaceUI() {
-    const pn = $('#place-name');
-    if (pn) pn.innerHTML = `${icon('pin', 16)}<span>${esc(state.place.name)}</span>`;
-    const ml = $('#map-label-text');
-    if (ml) ml.textContent = shortName(state.place.name);
+    $('#place-name').innerHTML = `${icon('pin', 16)}<span>${esc(state.place.name)}</span>`;
+    $('#map-label-text').textContent = shortName(state.place.name);
   }
 
   /* ───────────────────────── Live data loaders ───────────────────────── */
@@ -965,21 +977,11 @@
   let reqToken = 0;
   let refreshTimer;
 
-  function loadAll(forceNews = false) {
-    loadWeather();
-    loadNews(forceNews);
-    loadMandi();
-    loadNasa();
-    loadHazards();
-    loadRiver();
-  }
-
   async function loadWeather() {
     const token = ++reqToken;
     state.status = 'loading';
     if (!state.data) render();
-    const content = $('#content');
-    if (content) content.classList.add('is-busy');
+    $('#content').classList.add('is-busy');
     try {
       const { lat, lon } = state.place;
       const url = 'https://api.open-meteo.com/v1/forecast'
@@ -998,10 +1000,10 @@
       state.status = 'error';
       if (state.data) toast(t('refreshFail'));
     }
-    if (content) content.classList.remove('is-busy');
+    $('#content').classList.remove('is-busy');
     render();
     clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(() => loadAll(true), REFRESH_MS);
+    refreshTimer = setTimeout(() => { loadWeather(); loadNews(true); }, REFRESH_MS);
   }
 
   /* ----- News ----- */
@@ -1026,49 +1028,13 @@
       ? `किसान OR कृषि OR मंडी OR फसल ${st || 'भारत'} when:7d`
       : `farmers OR agriculture OR mandi OR "crop prices" OR monsoon ${st || 'India'} when:7d`;
     const rss = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=${hi ? 'hi' : 'en-IN'}&gl=IN&ceid=${hi ? 'IN:hi' : 'IN:en'}`;
-    try {
-      const j = await fetchJSON(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rss)}`, 10000);
-      if (j.status === 'ok' && Array.isArray(j.items) && j.items.length) {
-        return j.items.slice(0, 6).map((it) => {
-          const { title, source } = splitTitle(it.title || '');
-          const published = it.pubDate ? `${String(it.pubDate).replace(' ', 'T')}Z` : '';
-          return { title, source, link: it.link, published };
-        });
-      }
-    } catch (_) { /* fall through */ }
-
-    // 3) Fallback: fetch the RSS XML through public CORS proxies and parse it in the browser.
-    const proxies = [
-      (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-      (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
-      (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-    ];
-    for (const mk of proxies) {
-      try {
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 10000);
-        let xmlText;
-        try {
-          const res = await fetch(mk(rss), { signal: ctrl.signal });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          xmlText = await res.text();
-        } finally { clearTimeout(timer); }
-        const doc = new DOMParser().parseFromString(xmlText, 'text/xml');
-        const items = Array.from(doc.querySelectorAll('item')).slice(0, 6).map((it) => {
-          const { title, source } = splitTitle((it.querySelector('title') || {}).textContent || '');
-          const pub = (it.querySelector('pubDate') || {}).textContent || '';
-          const d = pub ? new Date(pub) : null;
-          return {
-            title,
-            source: source || ((it.querySelector('source') || {}).textContent || ''),
-            link: (it.querySelector('link') || {}).textContent || '',
-            published: d && !Number.isNaN(d.getTime()) ? d.toISOString() : '',
-          };
-        }).filter((x) => x.title && x.link);
-        if (items.length) return items;
-      } catch (_) { /* try the next proxy */ }
-    }
-    throw new Error('News unavailable');
+    const j = await fetchJSON(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rss)}`, 10000);
+    if (j.status !== 'ok' || !Array.isArray(j.items)) throw new Error('News unavailable');
+    return j.items.slice(0, 6).map((it) => {
+      const { title, source } = splitTitle(it.title || '');
+      const published = it.pubDate ? `${String(it.pubDate).replace(' ', 'T')}Z` : '';
+      return { title, source, link: it.link, published };
+    });
   }
 
   async function loadNews(force = false) {
@@ -1090,214 +1056,6 @@
     refreshCard('news');
   }
 
-  /* ----- Mandi prices ----- */
-
-  // Direct fallback to the Govt. of India Open Government Data API (Agmarknet daily prices).
-  async function fetchMandiDirect(crop, st, district) {
-    const commodity = MANDI_COMMODITY[crop];
-    if (!commodity) return { markets: [] };
-
-    const query = async (withDistrict) => {
-      const qs = new URLSearchParams({
-        'api-key': DATA_GOV_KEY,
-        format: 'json',
-        limit: '100',
-        'filters[state]': st,
-        'filters[commodity]': commodity,
-      });
-      if (withDistrict && district) qs.set('filters[district]', district);
-      const target = `https://api.data.gov.in/resource/${MANDI_RESOURCE}?${qs}`;
-      // Try the API directly first; if the browser blocks it (CORS) or it fails, retry via CORS proxies.
-      const attempts = [
-        target,
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(target)}`,
-        `https://corsproxy.io/?${encodeURIComponent(target)}`,
-      ];
-      let lastErr;
-      for (const url of attempts) {
-        try {
-          const j = await fetchJSON(url, 15000);
-          if (j && Array.isArray(j.records)) return j.records;
-          lastErr = new Error('Unexpected mandi response');
-        } catch (err) { lastErr = err; }
-      }
-      throw lastErr || new Error('Mandi unavailable');
-    };
-
-    let records = district ? await query(true) : [];
-    if (!records.length) records = await query(false);
-
-    const toISO = (s) => {
-      const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(s || ''));
-      return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
-    };
-    const byMarket = new Map();
-    for (const r of records) {
-      const modal = Number(r.modal_price);
-      if (!Number.isFinite(modal) || modal <= 0) continue;
-      const row = {
-        market: r.market || '',
-        district: r.district || '',
-        min: Number(r.min_price) || modal,
-        max: Number(r.max_price) || modal,
-        modal,
-        date: toISO(r.arrival_date),
-      };
-      const prev = byMarket.get(row.market);
-      if (!prev || row.date > prev.date) byMarket.set(row.market, row);
-    }
-    const markets = Array.from(byMarket.values())
-      .sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.modal - a.modal);
-    return { markets };
-  }
-
-  async function fetchMandi(crop, st, district) {
-    try {
-      const qs = new URLSearchParams({ crop, state: st });
-      if (district) qs.set('district', district);
-      const j = await fetchJSON(`/api/mandi?${qs}`, 15000);
-      if (Array.isArray(j.markets) && j.markets.length) return j;
-    } catch (_) { /* fall through to the direct government API */ }
-    return fetchMandiDirect(crop, st, district);
-  }
-
-  async function loadMandi() {
-    if (!state.crop) { state.mandi = null; refreshCard('mandi'); return; }
-    const { state: st, district } = region();
-    if (!st) { state.mandi = { status: 'nostate' }; refreshCard('mandi'); return; }
-    const mine = { key: `${state.crop}|${st}|${district || ''}`, status: 'loading' };
-    state.mandi = mine;
-    refreshCard('mandi');
-    try {
-      const j = await fetchMandi(state.crop, st, district);
-      if (state.mandi !== mine) return;
-      state.mandi = {
-        key: mine.key,
-        status: Array.isArray(j.markets) && j.markets.length ? 'ready' : 'empty',
-        data: j,
-      };
-    } catch (_) {
-      if (state.mandi !== mine) return;
-      state.mandi = { key: mine.key, status: 'error' };
-    }
-    refreshCard('mandi');
-  }
-
-  /* ----- NASA POWER: satellite soil moisture, rain and sunshine ----- */
-
-  async function fetchNasa(lat, lon) {
-    const fmt = (d) => d.toISOString().slice(0, 10).replace(/-/g, '');
-    const end = new Date();
-    const start = new Date(Date.now() - 12 * 864e5);
-    const url = 'https://power.larc.nasa.gov/api/temporal/daily/point'
-      + '?parameters=T2M,PRECTOTCORR,GWETROOT,ALLSKY_SFC_SW_DWN&community=AG'
-      + `&longitude=${lon.toFixed(4)}&latitude=${lat.toFixed(4)}`
-      + `&start=${fmt(start)}&end=${fmt(end)}&format=JSON`;
-    const j = await fetchJSON(url, 25000);
-    const p = j && j.properties && j.properties.parameter;
-    if (!p || !p.PRECTOTCORR) throw new Error('Unexpected NASA POWER response');
-
-    const valid = (v) => Number.isFinite(v) && v > -900; // POWER uses -999 for "no data"
-    const series = (name) => Object.keys(p[name] || {}).sort().filter((k) => valid(p[name][k]));
-
-    const rainDates = series('PRECTOTCORR');
-    if (!rainDates.length) throw new Error('No NASA POWER data');
-    const last7 = rainDates.slice(-7);
-    const rain7 = last7.reduce((s, k) => s + p.PRECTOTCORR[k], 0);
-
-    const soilDates = series('GWETROOT');
-    const soil = soilDates.length ? p.GWETROOT[soilDates[soilDates.length - 1]] : null;
-
-    const avg = (name) => {
-      const ks = series(name).slice(-7);
-      return ks.length ? ks.reduce((s, k) => s + p[name][k], 0) / ks.length : null;
-    };
-
-    const ld = rainDates[rainDates.length - 1];
-    const lastDate = new Date(Number(ld.slice(0, 4)), Number(ld.slice(4, 6)) - 1, Number(ld.slice(6, 8)));
-    return { soil, rain7, sun: avg('ALLSKY_SFC_SW_DWN'), temp: avg('T2M'), lastDate };
-  }
-
-  async function loadNasa() {
-    const key = placeKey();
-    const mine = { key, status: 'loading', data: null };
-    state.nasa = mine;
-    refreshCard('nasa');
-    try {
-      const data = await fetchNasa(state.place.lat, state.place.lon);
-      if (state.nasa !== mine) return;
-      state.nasa = { key, status: 'ready', data };
-    } catch (_) {
-      if (state.nasa !== mine) return;
-      state.nasa = { key, status: 'error', data: null };
-    }
-    refreshCard('nasa');
-  }
-
-  /* ----- NASA EONET: open cyclone and flood events near the place ----- */
-
-  async function fetchHazards(lat, lon) {
-    // bbox order for EONET: minLon, maxLat, maxLon, minLat
-    const bbox = [lon - 12, lat + 10, lon + 12, lat - 10].map((n) => n.toFixed(2)).join(',');
-    const url = `https://eonet.gsfc.nasa.gov/api/v3/events?status=open&category=severeStorms,floods&days=21&bbox=${bbox}`;
-    const j = await fetchJSON(url, 15000);
-    return (j.events || []).slice(0, 4).map((e) => {
-      const g = e.geometry && e.geometry[e.geometry.length - 1];
-      return {
-        title: e.title || '',
-        cat: (e.categories && e.categories[0] && e.categories[0].title) || '',
-        link: (e.sources && e.sources[0] && e.sources[0].url) || e.link || '',
-        date: (g && g.date) || '',
-      };
-    });
-  }
-
-  async function loadHazards() {
-    const key = placeKey();
-    const mine = { key, status: 'loading', items: [] };
-    state.hazards = mine;
-    refreshCard('outlook');
-    try {
-      const items = await fetchHazards(state.place.lat, state.place.lon);
-      if (state.hazards !== mine) return;
-      state.hazards = { key, status: 'ready', items };
-    } catch (_) {
-      if (state.hazards !== mine) return;
-      state.hazards = { key, status: 'error', items: [] };
-    }
-    refreshCard('outlook');
-  }
-
-  /* ----- Open-Meteo Flood API (Copernicus GloFAS river discharge) ----- */
-
-  async function fetchRiver(lat, lon) {
-    const url = 'https://flood-api.open-meteo.com/v1/flood'
-      + `?latitude=${lat}&longitude=${lon}&daily=river_discharge_max&forecast_days=7`;
-    const j = await fetchJSON(url, 12000);
-    const arr = j && j.daily && j.daily.river_discharge_max;
-    if (!Array.isArray(arr)) return null;
-    const vals = arr.filter((v) => Number.isFinite(v));
-    if (vals.length < 2) return null;
-    const base = vals[0];
-    const peak = Math.max(...vals);
-    return { base, peak, rise: base > 0 ? peak / base : 1 };
-  }
-
-  async function loadRiver() {
-    const key = placeKey();
-    const mine = { key, status: 'loading', data: null };
-    state.river = mine;
-    try {
-      const data = await fetchRiver(state.place.lat, state.place.lon);
-      if (state.river !== mine) return;
-      state.river = { key, status: 'ready', data };
-    } catch (_) {
-      if (state.river !== mine) return;
-      state.river = { key, status: 'error', data: null };
-    }
-    refreshCard('flood');
-  }
-
   /* ───────────────────────── Map ───────────────────────── */
 
   let map = null;
@@ -1305,62 +1063,23 @@
   let radarLayer = null;
   let radarTime = null;
   let radarFailed = false;
-  let radarSource = 'rainviewer'; // rainviewer | nasa
-  let radarTileErrors = 0;
 
   function updateCaption() {
     const el = $('#map-caption');
     if (!el) return;
     if (radarFailed) el.textContent = t('radarFail');
-    else if (state.radarOn && radarSource === 'nasa') el.textContent = t('radarNasa');
     else if (state.radarOn && radarTime) el.textContent = t('radarTime', { time: fmtTime(radarTime) });
     else el.textContent = t('mapHint');
   }
 
-  function nasaRadarLayer() {
-    // NASA GIBS, GPM IMERG precipitation rate (free, no key). WMTS order is {z}/{y}/{x}.
-    return L.tileLayer(
-      'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/IMERG_Precipitation_Rate/default/default/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png',
-      {
-        opacity: 0.7, maxNativeZoom: 6, maxZoom: 18, zIndex: 5,
-        attribution: 'Rain &copy; <a href="https://earthdata.nasa.gov/gibs">NASA GIBS</a> / GPM IMERG',
-      },
-    );
-  }
-
-  function useNasaRadar() {
-    if (!map) return;
-    if (radarLayer && map.hasLayer(radarLayer)) map.removeLayer(radarLayer);
-    radarSource = 'nasa';
-    radarTime = null;
-    radarFailed = false;
-    radarLayer = nasaRadarLayer();
-    if (state.radarOn) radarLayer.addTo(map);
-    updateCaption();
-  }
-
   function initMap() {
-    const fallback = $('#map-fallback');
-    if (typeof L === 'undefined') { if (fallback) fallback.hidden = false; return; }
+    if (typeof L === 'undefined') { $('#map-fallback').hidden = false; return; }
     const { lat, lon } = state.place;
     map = L.map('map', { center: [lat, lon], zoom: 8, minZoom: 3, scrollWheelZoom: false, dragging: !L.Browser.mobile });
-    // CARTO basemaps now require an API key, so use the standard OpenStreetMap tiles,
-    // with Esri World Street Map as an automatic fallback if OSM tiles keep failing.
-    const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      maxZoom: 19,
     }).addTo(map);
-    let osmErrors = 0;
-    osm.on('tileerror', () => {
-      osmErrors += 1;
-      if (osmErrors === 6 && map.hasLayer(osm)) {
-        map.removeLayer(osm);
-        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
-          attribution: 'Tiles &copy; Esri',
-          maxZoom: 19,
-        }).addTo(map).bringToBack();
-      }
-    });
     marker = L.marker([lat, lon], {
       icon: L.divIcon({ className: 'pin', html: '<span></span>', iconSize: [30, 30], iconAnchor: [15, 30] }),
       keyboard: false,
@@ -1368,7 +1087,6 @@
     map.on('focus', () => map.scrollWheelZoom.enable());
     map.on('blur', () => map.scrollWheelZoom.disable());
     map.on('click', onMapClick);
-    window.addEventListener('resize', () => map && map.invalidateSize());
     loadRadar();
   }
 
@@ -1379,23 +1097,14 @@
       if (!frames || !frames.length) throw new Error('No radar frames');
       const last = frames[frames.length - 1];
       radarTime = new Date(last.time * 1000);
-      radarSource = 'rainviewer';
-      radarTileErrors = 0;
       radarLayer = L.tileLayer(`${j.host}${last.path}/256/{z}/{x}/{y}/2/1_1.png`, {
         opacity: 0.7, maxNativeZoom: 7, maxZoom: 18, zIndex: 5,
         attribution: 'Radar &copy; <a href="https://www.rainviewer.com/">RainViewer</a>',
       });
-      // If RainViewer tiles keep failing, switch to NASA satellite rainfall automatically.
-      radarLayer.on('tileerror', () => {
-        radarTileErrors += 1;
-        if (radarSource === 'rainviewer' && radarTileErrors >= 6) useNasaRadar();
-      });
       if (state.radarOn) radarLayer.addTo(map);
       radarFailed = false;
-      updateCaption();
-    } catch (_) {
-      useNasaRadar();
-    }
+    } catch (_) { radarFailed = true; }
+    updateCaption();
   }
 
   function toggleRadar() {
@@ -1413,21 +1122,12 @@
   }
 
   async function reverseName(lat, lon) {
-    // 1) Nominatim (OpenStreetMap)
     try {
       const j = await fetchJSON(
         `https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=12&accept-language=en&lat=${lat}&lon=${lon}`, 6000);
       const a = j.address || {};
-      const local = a.village || a.hamlet || a.town || a.suburb || a.city || a.county;
-      const district = a.state_district || a.county;
-      const parts = [local, district && district !== local ? district : null, a.state].filter(Boolean);
-      if (parts.length) return parts.join(', ');
-    } catch (_) { /* fall through */ }
-    // 2) BigDataCloud free client-side reverse geocoder
-    try {
-      const j = await fetchJSON(
-        `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`, 6000);
-      const parts = [j.locality || j.city, j.principalSubdivision].filter(Boolean);
+      const local = a.village || a.hamlet || a.town || a.suburb || a.city || a.county || a.state_district;
+      const parts = [local, a.state].filter(Boolean);
       if (parts.length) return parts.join(', ');
     } catch (_) { /* fall through */ }
     return null;
@@ -1448,8 +1148,7 @@
         const { latitude: lat, longitude: lon } = pos.coords;
         const name = (await reverseName(lat, lon)) || t('myLocationName');
         setPlace({ name, lat, lon });
-        const el = $('#toast');
-        if (el) el.hidden = true;
+        $('#toast').hidden = true;
       },
       () => toast(t('locDenied')),
       { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
@@ -1461,17 +1160,18 @@
   function setPlace(place, opts = {}) {
     state.place = { name: place.name, lat: Number(place.lat), lon: Number(place.lon) };
     state.data = null;
-    state.nasa = null;
-    state.hazards = null;
-    state.river = null;
     persist();
     updatePlaceUI();
     if (!opts.skipMove) moveMap(state.place.lat, state.place.lon);
     render();
-    loadAll();
+    loadWeather();
+    loadNews();
   }
 
-  let dlg, searchInput, resultsEl, dlgStatus;
+  const dlg = $('#place-dialog');
+  const searchInput = $('#place-search');
+  const resultsEl = $('#place-results');
+  const dlgStatus = $('#dlg-status');
   let dialogResults = [];
   let searchTimer;
   let searchToken = 0;
@@ -1533,7 +1233,8 @@
 
     $('#lang-toggle').addEventListener('click', () => {
       state.lang = state.lang === 'en' ? 'hi' : 'en';
-      if (canSpeak) window.speechSynthesis.cancel();
+      abortListening();
+      stopSpeaking();
       persist();
       applyStatic();
       render();
@@ -1543,9 +1244,23 @@
     $('#radar-toggle').addEventListener('click', toggleRadar);
     $('#locate-btn').addEventListener('click', locateMe);
 
+    $('#content').addEventListener('submit', (e) => {
+      if (e.target.id !== 'chat-form') return;
+      e.preventDefault();
+      sendChat(($('#chat-input') || {}).value || '');
+    });
+    $('#content').addEventListener('input', (e) => {
+      if (e.target.id === 'chat-input') state.chat.draft = e.target.value;
+    });
+
     $('#content').addEventListener('click', (e) => {
       const speakEl = e.target.closest('[data-speak]');
       if (speakEl) { speak(speechTexts.get(speakEl.dataset.speak), speakEl); return; }
+
+      const promptEl = e.target.closest('[data-ai-prompt]');
+      if (promptEl) { sendChat(promptEl.dataset.aiPrompt); return; }
+      if (e.target.closest('[data-ai-mic]')) { toggleMic(); return; }
+      if (e.target.closest('[data-ai-stop]')) { stopSpeaking(); return; }
 
       const cropEl = e.target.closest('[data-crop]');
       if (cropEl) {
@@ -1555,24 +1270,20 @@
         render();
         const again = $(`[data-crop="${picked}"]`);
         if (again) again.focus({ preventScroll: true });
-        loadMandi();
         return;
       }
 
       const actionEl = e.target.closest('[data-action]');
       if (!actionEl) return;
       const a = actionEl.dataset.action;
-      if (a === 'retry') { state.data = null; render(); loadAll(); }
-      else if (a === 'refresh') loadAll(true);
+      if (a === 'retry') { state.data = null; render(); loadWeather(); }
+      else if (a === 'refresh') { loadWeather(); loadNews(true); }
       else if (a === 'news-retry') loadNews(true);
-      else if (a === 'mandi-retry') loadMandi();
-      else if (a === 'nasa-retry') loadNasa();
     });
 
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && state.updated
-        && Date.now() - state.updated.getTime() > REFRESH_MS) {
-        loadAll(true);
+      if (document.visibilityState === 'visible' && state.updated && Date.now() - state.updated > REFRESH_MS) {
+        loadWeather(); loadNews(true);
       }
     });
   }
@@ -1580,20 +1291,15 @@
   /* ───────────────────────── Init ───────────────────────── */
 
   function init() {
-    dlg = $('#place-dialog');
-    searchInput = $('#place-search');
-    resultsEl = $('#place-results');
-    dlgStatus = $('#dlg-status');
-
     applyStatic();
     $('#radar-toggle').setAttribute('aria-pressed', String(state.radarOn));
     bindEvents();
     initMap();
     render();
-    loadAll();
+    loadWeather();
+    loadNews();
     if (canSpeak) window.speechSynthesis.getVoices();
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-  else init();
+  init();
 })();
