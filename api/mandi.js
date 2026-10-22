@@ -1,19 +1,4 @@
 
-/**
- * GET /api/mandi?crop=paddy&state=West%20Bengal&district=Hooghly
- *
- * Vercel serverless function.
- * Required environment variable:
- *   DATA_GOV_API_KEY
- *
- * Returns Agmarknet mandi prices from data.gov.in.
- * Prices are in INR per quintal.
- *
- * IMPORTANT:
- * - District searches never silently fall back to the whole state.
- * - State-wide results are returned only when no district is requested.
- * - This endpoint does not claim that district-level markets are nearby.
- */
 
 const RESOURCE_ID = '9ef84268-d588-465a-a308-a864a43d0070';
 const API_BASE = `https://api.data.gov.in/resource/${RESOURCE_ID}`;
@@ -400,10 +385,15 @@ module.exports = async function handler(req, res) {
     );
   } catch (error) {
     // Never log the API key, request URL, or credentials.
-    console.error(
-      'Mandi API request failed:',
-      error.message
-    );
+    console.error('Mandi API request failed:', {
+  name: error.name,
+  message: error.message,
+  causeName: error.cause?.name,
+  causeMessage: error.cause?.message,
+  code: error.cause?.code,
+  syscall: error.cause?.syscall,
+  hostname: error.cause?.hostname
+});
 
     return send(res, 502, {
       error: 'upstream_failed',
