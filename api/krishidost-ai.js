@@ -87,7 +87,7 @@ exports.handler = async (event) => {
   } catch (_) { /* keep default */ }
 
   const system = `${SYSTEM_PROMPT}\n\nApp language: ${lang}\nLive context (JSON): ${context}`;
-  const model = (process.env.GEMINI_MODEL || 'gemini-2.5-flash').replace(/^models\//, '');
+  const model = (process.env.GEMINI_MODEL || 'Gemini 3 Flash Live').replace(/^models\//, '');
 
   // Gemini uses the role name "model" instead of "assistant".
   const contents = messages.map((m) => ({
