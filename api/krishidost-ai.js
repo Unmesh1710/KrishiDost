@@ -3,11 +3,11 @@
  * Body: { messages: [{ role: "user" | "assistant", content: string }], context: object, lang: "en" | "hi" }
  * Returns: { reply: string }
  *
- * Calls the Anthropic Messages API. The key stays on the server.
+ * Calls the Google Gemini API (generateContent). The key stays on the server.
  *
  * Environment variables:
- *   ANTHROPIC_API_KEY  (required)  https://console.anthropic.com
- *   ANTHROPIC_MODEL    (optional)  default "claude-sonnet-5-5"; use "claude-haiku-5-5" for faster, cheaper replies
+ *   GEMINI_API_KEY  (required)  create one free at https://aistudio.google.com/apikey
+ *   GEMINI_MODEL    (optional)  default "gemini-2.5-flash". Check https://ai.google.dev/gemini-api/docs/models for current names.
  */
 
 const MAX_BODY_BYTES = 20 * 1024;
@@ -65,7 +65,7 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return json(204, {});
   if (event.httpMethod !== 'POST') return json(405, { error: 'method_not_allowed' });
 
-  const key = process.env.ANTHROPIC_API_KEY;
+  const key = process.env.GEMINI_API_KEY;
   if (!key) return json(503, { error: 'not_configured' });
 
   if ((event.body || '').length > MAX_BODY_BYTES) return json(413, { error: 'too_large' });
@@ -87,28 +87,52 @@ exports.handler = async (event) => {
   } catch (_) { /* keep default */ }
 
   const system = `${SYSTEM_PROMPT}\n\nApp language: ${lang}\nLive context (JSON): ${context}`;
-  const model = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5';
+  const model = (process.env.GEMINI_MODEL || 'gemini-2.5-flash').replace(/^models\//, '');
+
+  // Gemini uses the role name "model" instead of "assistant".
+  const contents = messages.map((m) => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
+  }));
+
+  const generationConfig = { maxOutputTokens: 1024, temperature: 0.4 };
+  // Gemini 2.5 Flash "thinks" by default, which is slow and uses up the token budget.
+  // Short spoken answers do not need it, so switch thinking off for that model family.
+  if (/2\.5-flash/.test(model)) generationConfig.thinkingConfig = { thinkingBudget: 0 };
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 25000);
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01',
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: system }] },
+          contents,
+          generationConfig,
+        }),
+        signal: ctrl.signal,
       },
-      body: JSON.stringify({ model, max_tokens: 400, system, messages }),
-      signal: ctrl.signal,
-    });
-    if (!res.ok) return json(502, { error: 'upstream_failed' });
+    );
+
+    if (!res.ok) {
+      // Shows up in Netlify's function logs so you can see why (bad key, wrong model name, quota...).
+      console.error('Gemini error', res.status, (await res.text()).slice(0, 500));
+      return json(502, { error: res.status === 429 ? 'rate_limited' : 'upstream_failed' });
+    }
 
     const data = await res.json();
-    const reply = clean((data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n'));
-    if (!reply) return json(502, { error: 'empty_reply' });
+    const parts = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
+    const reply = clean(parts.map((p) => p.text || '').join('\n'));
+    if (!reply) {
+      console.error('Gemini returned no text', JSON.stringify(data.promptFeedback || data.candidates || {}).slice(0, 500));
+      return json(502, { error: 'empty_reply' });
+    }
     return json(200, { reply });
-  } catch (_) {
+  } catch (err) {
+    console.error('Assistant request failed', err && err.message);
     return json(502, { error: 'upstream_failed' });
   } finally {
     clearTimeout(timer);
