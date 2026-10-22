@@ -252,12 +252,47 @@ main { flex: 1; padding-bottom: 36px; }
 .news-title { display: block; font-weight: 700; font-size: .9375rem; line-height: 1.4; }
 .news-meta { display: block; margin-top: 3px; font-size: .75rem; color: var(--muted); }
 
-/* Mandi */
-.mandi-top { background: linear-gradient(135deg, #f1f9f2, #fffdf1); border: 1px solid var(--mint-line); border-radius: 16px; padding: 14px 16px; }
-.mandi-top .market { font-size: .8125rem; font-weight: 700; color: var(--green); }
-.price { font-family: var(--display); font-size: 2rem; font-weight: 800; color: var(--forest); line-height: 1.2; letter-spacing: -.02em; }
-.price small { font-family: var(--font); font-size: .8125rem; font-weight: 600; color: var(--muted); letter-spacing: 0; }
-.range { font-size: .8125rem; color: var(--muted); }
+/* AI assistant */
+.badge-icon.is-ai { background: linear-gradient(135deg, #e7eeff, #f1e7ff); color: #4a3bb5; }
+.live--ai { background: #efe9ff; color: #4a3bb5; }
+.live--ai::before { background: #7c5cff; box-shadow: none; animation: none; }
+
+.chat-log {
+  height: 270px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 12px;
+  background: #f5f8f5; border: 1px solid var(--line); border-radius: 18px;
+}
+.chat-hint { margin: auto 0; text-align: center; color: var(--muted); font-size: .9rem; padding: 0 10px; }
+.msg-row { display: flex; align-items: flex-end; gap: 2px; }
+.msg-row.is-user { justify-content: flex-end; }
+.bubble { max-width: 88%; padding: 10px 14px; border-radius: 18px; font-size: .9375rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.is-user .bubble { background: var(--green); color: #fff; border-bottom-right-radius: 5px; }
+.is-bot .bubble { background: #fff; border: 1px solid var(--line); border-bottom-left-radius: 5px; }
+.is-error .bubble { background: var(--danger-bg); border-color: #f0c2c2; color: var(--danger); }
+.msg-row .icon-btn { width: 34px; height: 34px; }
+.typing { display: inline-flex; gap: 5px; padding: 14px 16px; }
+.typing i { width: 7px; height: 7px; border-radius: 50%; background: #98ad9c; animation: blink 1.2s infinite; }
+.typing i:nth-child(2) { animation-delay: .2s; }
+.typing i:nth-child(3) { animation-delay: .4s; }
+@keyframes blink { 0%, 80%, 100% { opacity: .3; } 40% { opacity: 1; } }
+
+.chat-status { min-height: 1.5em; margin: 8px 2px 0; font-size: .8125rem; font-weight: 700; color: var(--green); }
+.chat-prompts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.chat-prompts .chip { min-height: 36px; padding: 6px 14px; font-size: .8125rem; }
+
+.chat-form { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.chat-form input {
+  flex: 1; min-width: 0; border: 1.5px solid #c9d4cb; border-radius: 999px; padding: 12px 16px;
+  font: inherit; background: #fff; color: var(--ink);
+}
+.chat-form input:focus { outline: none; border-color: var(--leaf); box-shadow: 0 0 0 3px rgba(46, 125, 50, .15); }
+.round-btn { width: 46px; height: 46px; border-radius: 50%; border: 0; display: grid; place-items: center; flex: none; background: var(--mint); color: var(--green); transition: background-color .15s; }
+.round-btn:hover { background: #d3ebd6; }
+.round-btn.primary { background: var(--green); color: #fff; }
+.round-btn.primary:hover { background: var(--forest); }
+.round-btn:disabled { opacity: .5; cursor: default; }
+.round-btn.is-listening { background: #d32f2f; color: #fff; animation: ring 1.4s infinite; }
+@keyframes ring { 0% { box-shadow: 0 0 0 0 rgba(211, 47, 47, .5); } 70% { box-shadow: 0 0 0 12px rgba(211, 47, 47, 0); } 100% { box-shadow: 0 0 0 0 rgba(211, 47, 47, 0); } }
+[hidden] { display: none !important; }
 
 /* Skeleton */
 .skeleton { min-height: 150px; position: relative; overflow: hidden; background: #e4ebe5; border: 0; box-shadow: none; }
@@ -313,6 +348,6 @@ dialog::backdrop { background: rgba(8, 28, 12, .6); }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .skeleton::after, .sk-line::after, .live::before { animation: none; }
+  .skeleton::after, .sk-line::after, .live::before, .typing i, .round-btn.is-listening { animation: none; }
   * { transition: none !important; }
 }
