@@ -1,28 +1,10 @@
-/**
- * POST /api/assistant
- * Body: { messages: [{ role: "user" | "assistant", content: string }], context: object, lang: "en" | "hi" }
- * Returns: { reply: string }
- *
- * Calls the Google Gemini API (generateContent). The key stays on the server.
- *
- * Environment variables:
- *   GEMINI_API_KEY  (required)  create one free at https://aistudio.google.com/apikey
- *   GEMINI_MODEL    (optional)  default "gemini-2.5-flash". Check https://ai.google.dev/gemini-api/docs/models for current names.
- */
+
 
 const MAX_BODY_BYTES = 20 * 1024;
 const MAX_MESSAGES = 8;
 const MAX_CHARS = 600;
-
-const json = (statusCode, body) => ({
-  statusCode,
-  headers: {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Cache-Control': 'no-store',
-    'Access-Control-Allow-Origin': '*',
-  },
-  body: JSON.stringify(body),
-});
+const MAX_CONTEXT_CHARS = 3000;
+const REQUEST_TIMEOUT_MS = 25000;
 
 const SYSTEM_PROMPT = `You are KrishiDost AI, a friendly farming assistant for farmers in India.
 
@@ -38,103 +20,264 @@ For emergencies such as floods, storms, lightning or injury, put safety first an
 
 If a question is not about farming, weather, crops, livestock or rural livelihoods, politely steer back to farming.`;
 
-// Spoken output must not contain markdown characters.
-const clean = (text) => text
-  .replace(/[*_#`>~]/g, '')
-  .replace(/^\s*[-•]\s+/gm, '')
-  .replace(/^\s*\d+[.)]\s+/gm, '')
-  .replace(/\n{2,}/g, '\n')
-  .trim();
-
-function sanitiseMessages(input) {
-  if (!Array.isArray(input)) return [];
-  const out = [];
-  for (const m of input.slice(-MAX_MESSAGES)) {
-    if (!m || (m.role !== 'user' && m.role !== 'assistant')) continue;
-    const content = String(m.content || '').slice(0, MAX_CHARS).trim();
-    if (!content) continue;
-    const last = out[out.length - 1];
-    if (last && last.role === m.role) last.content += `\n${content}`; // merge same-role neighbours
-    else out.push({ role: m.role, content });
-  }
-  while (out.length && out[0].role !== 'user') out.shift(); // must start with the farmer
-  return out;
+// Clean the response for text-to-speech.
+function clean(text) {
+  return String(text || '')
+    .replace(/[*_#`>~]/g, '')
+    .replace(/^\s*[-•]\s+/gm, '')
+    .replace(/^\s*\d+[.)]\s+/gm, '')
+    .replace(/\n{2,}/g, '\n')
+    .trim();
 }
 
-exports.handler = async (event) => {
-  if (event.httpMethod === 'OPTIONS') return json(204, {});
-  if (event.httpMethod !== 'POST') return json(405, { error: 'method_not_allowed' });
+// Consistent JSON responses.
+function sendError(res, status, error) {
+  return res.status(status).json({ error });
+}
 
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) return json(503, { error: 'not_configured' });
+// Validate and normalise conversation history.
+function sanitiseMessages(input) {
+  if (!Array.isArray(input)) return [];
 
-  if ((event.body || '').length > MAX_BODY_BYTES) return json(413, { error: 'too_large' });
+  const output = [];
 
-  let payload;
-  try {
-    payload = JSON.parse(event.body || '{}');
-  } catch (_) {
-    return json(400, { error: 'bad_json' });
+  for (const message of input.slice(-MAX_MESSAGES)) {
+    if (
+      !message ||
+      (message.role !== 'user' && message.role !== 'assistant')
+    ) {
+      continue;
+    }
+
+    const content = String(message.content || '')
+      .slice(0, MAX_CHARS)
+      .trim();
+
+    if (!content) continue;
+
+    const previous = output[output.length - 1];
+
+    if (previous && previous.role === message.role) {
+      previous.content += '\n' + content;
+    } else {
+      output.push({
+        role: message.role,
+        content
+      });
+    }
+  }
+
+  // Gemini conversations must start with a user message.
+  while (output.length && output[0].role !== 'user') {
+    output.shift();
+  }
+
+  return output;
+}
+
+// Vercel Node.js API handler.
+// This is NOT the Netlify exports.handler(event) format.
+module.exports = async function handler(req, res) {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST, OPTIONS');
+    return sendError(res, 405, 'method_not_allowed');
+  }
+
+  // Read credentials only on the server.
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey) {
+    console.error('KrishiDost: GEMINI_API_KEY is not configured.');
+    return sendError(res, 503, 'not_configured');
+  }
+
+  // Vercel normally parses JSON request bodies automatically.
+  let payload = req.body;
+
+  if (typeof payload === 'string') {
+    if (Buffer.byteLength(payload, 'utf8') > MAX_BODY_BYTES) {
+      return sendError(res, 413, 'too_large');
+    }
+
+    try {
+      payload = JSON.parse(payload || '{}');
+    } catch {
+      return sendError(res, 400, 'bad_json');
+    }
+  } else {
+    let serialised;
+
+    try {
+      serialised = JSON.stringify(payload || {});
+    } catch {
+      return sendError(res, 400, 'bad_json');
+    }
+
+    if (Buffer.byteLength(serialised, 'utf8') > MAX_BODY_BYTES) {
+      return sendError(res, 413, 'too_large');
+    }
+  }
+
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return sendError(res, 400, 'bad_request');
   }
 
   const messages = sanitiseMessages(payload.messages);
-  if (!messages.length || messages[messages.length - 1].role !== 'user') return json(400, { error: 'bad_request' });
+
+  if (
+    !messages.length ||
+    messages[messages.length - 1].role !== 'user'
+  ) {
+    return sendError(res, 400, 'bad_request');
+  }
 
   const lang = payload.lang === 'hi' ? 'Hindi' : 'English';
+
   let context = '{}';
+
   try {
-    context = JSON.stringify(payload.context || {}).slice(0, 3000);
-  } catch (_) { /* keep default */ }
+    context = JSON.stringify(payload.context || {});
 
-  const system = `${SYSTEM_PROMPT}\n\nApp language: ${lang}\nLive context (JSON): ${context}`;
-  const model = (process.env.GEMINI_MODEL || 'Gemini 3 Flash Live').replace(/^models\//, '');
+    if (context.length > MAX_CONTEXT_CHARS) {
+      context = context.slice(0, MAX_CONTEXT_CHARS);
+    }
+  } catch {
+    context = '{}';
+  }
 
-  // Gemini uses the role name "model" instead of "assistant".
-  const contents = messages.map((m) => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
+  const systemInstruction =
+    SYSTEM_PROMPT +
+    '\n\nApp language: ' + lang +
+    '\nLive context (JSON): ' + context;
+
+  const model = (
+    process.env.GEMINI_MODEL || 'gemini-2.5-flash'
+  ).replace(/^models\//, '').trim();
+
+  if (!/^[a-zA-Z0-9._-]+$/.test(model)) {
+    return sendError(res, 500, 'invalid_model_configuration');
+  }
+
+  // Gemini uses "model" for assistant messages.
+  const contents = messages.map((message) => ({
+    role: message.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: message.content }]
   }));
 
-  const generationConfig = { maxOutputTokens: 1024, temperature: 0.4 };
-  // Gemini 2.5 Flash "thinks" by default, which is slow and uses up the token budget.
-  // Short spoken answers do not need it, so switch thinking off for that model family.
-  if (/2\.5-flash/.test(model)) generationConfig.thinkingConfig = { thinkingBudget: 0 };
+  const generationConfig = {
+    maxOutputTokens: 1024,
+    temperature: 0.4
+  };
 
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 25000);
+  // Disable additional thinking for Gemini 2.5 Flash
+  // to prioritise short, fast spoken responses.
+  if (/^gemini-2\.5-flash(?:-|$)/i.test(model)) {
+    generationConfig.thinkingConfig = {
+      thinkingBudget: 0
+    };
+  }
+
+  const controller = new AbortController();
+
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, REQUEST_TIMEOUT_MS);
+
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: system }] },
-          contents,
-          generationConfig,
-        }),
-        signal: ctrl.signal,
+    const endpoint =
+      'https://generativelanguage.googleapis.com/v1beta/models/' +
+      encodeURIComponent(model) +
+      ':generateContent';
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey
       },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{ text: systemInstruction }]
+        },
+        contents,
+        generationConfig
+      }),
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      const details = (await response.text()).slice(0, 1000);
+
+      // Keep credentials out of logs and client responses.
+      console.error('Gemini API request failed:', {
+        status: response.status,
+        model,
+        details
+      });
+
+      if (response.status === 429) {
+        return sendError(res, 429, 'rate_limited');
+      }
+
+      if (response.status === 401 || response.status === 403) {
+        return sendError(res, 502, 'gemini_auth_failed');
+      }
+
+      if (response.status === 404) {
+        return sendError(res, 502, 'gemini_model_not_found');
+      }
+
+      return sendError(res, 502, 'upstream_failed');
+    }
+
+    const data = await response.json();
+
+    const candidate = data.candidates?.[0];
+    const parts = candidate?.content?.parts || [];
+
+    const reply = clean(
+      parts
+        .filter((part) => typeof part.text === 'string')
+        .map((part) => part.text)
+        .join('\n')
     );
 
-    if (!res.ok) {
-      // Shows up in Netlify's function logs so you can see why (bad key, wrong model name, quota...).
-      console.error('Gemini error', res.status, (await res.text()).slice(0, 500));
-      return json(502, { error: res.status === 429 ? 'rate_limited' : 'upstream_failed' });
+    if (!reply) {
+      console.error('Gemini returned no text:', {
+        model,
+        finishReason: candidate?.finishReason,
+        promptFeedback: data.promptFeedback
+      });
+
+      return sendError(res, 502, 'empty_reply');
     }
 
-    const data = await res.json();
-    const parts = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
-    const reply = clean(parts.map((p) => p.text || '').join('\n'));
-    if (!reply) {
-      console.error('Gemini returned no text', JSON.stringify(data.promptFeedback || data.candidates || {}).slice(0, 500));
-      return json(502, { error: 'empty_reply' });
+    return res.status(200).json({ reply });
+
+  } catch (error) {
+    console.error('KrishiDost assistant request failed:', {
+      name: error?.name,
+      message: error?.message,
+      model
+    });
+
+    if (error?.name === 'AbortError') {
+      return sendError(res, 504, 'request_timeout');
     }
-    return json(200, { reply });
-  } catch (err) {
-    console.error('Assistant request failed', err && err.message);
-    return json(502, { error: 'upstream_failed' });
+
+    return sendError(res, 502, 'upstream_failed');
+
   } finally {
-    clearTimeout(timer);
+    clearTimeout(timeout);
   }
 };
