@@ -1,132 +1,408 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>KrishiDost – Weather, flood, mandi prices and crop advice for farmers</title>
-  <meta name="description" content="KrishiDost gives Indian farmers a live rain radar, 72-hour forecast, flood risk, pest alerts, live mandi prices and farm news in English and Hindi.">
+
+  <title>KrishiDost – Your AI Farming Companion</title>
+
+  <meta name="description" content="KrishiDost helps Indian farmers with weather forecasts, rain radar, flood alerts, crop guidance and a multilingual AI farming assistant.">
   <meta name="theme-color" content="#0e3b17">
+
   <meta property="og:type" content="website">
-  <meta property="og:title" content="KrishiDost – Your farming companion">
-  <meta property="og:description" content="Live rain radar, forecasts, mandi prices and farm news in English and Hindi.">
+  <meta property="og:title" content="KrishiDost – Your AI Farming Companion">
+  <meta property="og:description" content="Explore weather forecasts, rain radar and farming guidance in Bengali, Hindi and English.">
+
   <link rel="icon" type="image/svg+xml" href="logo-mark.svg">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&family=Noto+Sans:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-  <a class="skip" href="#content" data-i18n="skip">Skip to content</a>
 
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&family=Noto+Sans:wght@400;500;600;700;800&family=Noto+Sans+Bengali:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  >
+
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="assistant.css">
+</head>
+
+<body>
+  <a class="skip" href="#content" data-i18n="skip">
+    Skip to content
+  </a>
+
+  <!-- Header -->
   <header class="site-header">
     <div class="wrap header-inner">
+
       <a class="logo" href="./" aria-label="KrishiDost home">
-        <svg class="logo-mark" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+        <svg
+          class="logo-mark"
+          viewBox="0 0 48 48"
+          aria-hidden="true"
+          focusable="false"
+        >
           <defs>
-            <linearGradient id="kd-leaf" x1="12" y1="10" x2="36" y2="38" gradientUnits="userSpaceOnUse">
+            <linearGradient
+              id="kd-leaf"
+              x1="12"
+              y1="10"
+              x2="36"
+              y2="38"
+              gradientUnits="userSpaceOnUse"
+            >
               <stop offset="0" stop-color="#2f9e50"/>
               <stop offset="1" stop-color="#0f4d1d"/>
             </linearGradient>
-            <linearGradient id="kd-gold" x1="19" y1="26" x2="37" y2="38" gradientUnits="userSpaceOnUse">
+
+            <linearGradient
+              id="kd-gold"
+              x1="19"
+              y1="26"
+              x2="37"
+              y2="38"
+              gradientUnits="userSpaceOnUse"
+            >
               <stop offset="0" stop-color="#ffd761"/>
               <stop offset="1" stop-color="#f2a900"/>
             </linearGradient>
           </defs>
+
           <rect width="48" height="48" rx="13" fill="#fff"/>
           <rect x="13.5" y="10" width="5.5" height="28" rx="2.75" fill="url(#kd-leaf)"/>
           <path d="M19 26C19 16 26 11 36 11C36 20 29 26 19 26Z" fill="url(#kd-leaf)"/>
           <path d="M19 26C28 26 35 30 36 38C27 38 19 34 19 26Z" fill="url(#kd-gold)"/>
         </svg>
+
         <span class="logo-text">
           <span class="logo-name"><b>Krishi</b>Dost</span>
-          <span class="logo-tag" data-i18n="tagline">Your farming companion</span>
+          <span class="logo-tag" data-i18n="tagline">
+            Your farming companion
+          </span>
         </span>
       </a>
+
       <p class="place" id="place-name" aria-live="polite"></p>
-      <button type="button" id="change-place" class="btn btn-ghost" data-i18n="changePlace">Change Place</button>
-      <button type="button" id="lang-toggle" class="btn btn-ghost lang" lang="hi">हिन्दी</button>
+
+      <button
+        type="button"
+        id="change-place"
+        class="btn btn-ghost"
+        data-i18n="changePlace"
+      >
+        Change Place
+      </button>
+
+      <button
+        type="button"
+        id="lang-toggle"
+        class="btn btn-ghost lang"
+        lang="hi"
+      >
+        हिन्दी
+      </button>
     </div>
   </header>
 
+  <!-- Main dashboard -->
   <main class="wrap" id="main">
+
+    <!-- Weather and rain radar map -->
     <section class="map-card" aria-labelledby="map-title">
-      <h2 id="map-title" class="sr-only" data-i18n="mapTitle">Rain radar and location map</h2>
+      <h2 id="map-title" class="sr-only" data-i18n="mapTitle">
+        Rain radar and location map
+      </h2>
+
       <div class="map-wrap">
         <div id="map" aria-label="Map"></div>
-        <p class="map-label" id="map-label"><span data-icon="pin" data-size="16"></span><span id="map-label-text"></span></p>
-        <p class="map-fallback" id="map-fallback" hidden data-i18n="mapFail">The map could not load. Check your connection and refresh.</p>
+
+        <p class="map-label" id="map-label">
+          <span data-icon="pin" data-size="16"></span>
+          <span id="map-label-text"></span>
+        </p>
+
+        <p
+          class="map-fallback"
+          id="map-fallback"
+          hidden
+          data-i18n="mapFail"
+        >
+          The map could not load. Check your connection and refresh.
+        </p>
       </div>
+
       <div class="map-bar">
-        <button type="button" class="chip chip-sm" id="radar-toggle" aria-pressed="true">
-          <span data-icon="layers" data-size="16"></span><span data-i18n="radar">Rain radar</span>
+        <button
+          type="button"
+          class="chip chip-sm"
+          id="radar-toggle"
+          aria-pressed="true"
+        >
+          <span data-icon="layers" data-size="16"></span>
+          <span data-i18n="radar">Rain radar</span>
         </button>
-        <button type="button" class="chip chip-sm" id="locate-btn">
-          <span data-icon="locate" data-size="16"></span><span data-i18n="myLocation">Use my location</span>
+
+        <button
+          type="button"
+          class="chip chip-sm"
+          id="locate-btn"
+        >
+          <span data-icon="locate" data-size="16"></span>
+          <span data-i18n="myLocation">Use my location</span>
         </button>
+
         <p class="map-caption" id="map-caption"></p>
       </div>
     </section>
 
+    <!-- Existing dashboard cards are rendered by app.js -->
     <div id="content" tabindex="-1" aria-live="polite"></div>
-    <noscript><p class="card">KrishiDost needs JavaScript to show live weather. Please enable it and reload.</p></noscript>
+
+    <!-- AI farming assistant -->
+    <section class="card ai-assistant" id="krishi-ai" aria-labelledby="ai-title">
+
+      <div class="card-head">
+        <div class="ai-icon" aria-hidden="true">🌾</div>
+
+        <div class="ai-heading">
+          <h2 id="ai-title">KrishiDost AI Assistant</h2>
+          <p>Your multilingual farming companion</p>
+        </div>
+
+        <span class="ai-badge">BETA</span>
+      </div>
+
+      <label class="ai-label" for="ai-language">
+        Choose your language
+      </label>
+
+      <select id="ai-language" class="ai-language">
+        <option value="bn-IN">বাংলা (Bengali)</option>
+        <option value="hi-IN">हिन्दी (Hindi)</option>
+        <option value="en-IN">English</option>
+      </select>
+
+      <div class="ai-welcome">
+        <span class="ai-robot" aria-hidden="true">🤖</span>
+
+        <div>
+          <strong id="ai-greeting">নমস্কার! আমি কৃষিদোস্ত।</strong>
+          <p id="ai-description">
+            আপনার চাষাবাদ সম্পর্কে প্রশ্ন করুন।
+          </p>
+        </div>
+      </div>
+
+      <div class="ai-suggestions" aria-label="Suggested questions">
+        <button
+          type="button"
+          class="ai-suggestion"
+          data-question="How can I protect my crops from heavy rain?"
+        >
+          🌧️ Crop protection
+        </button>
+
+        <button
+          type="button"
+          class="ai-suggestion"
+          data-question="How can I check mandi prices?"
+        >
+          💰 Mandi prices
+        </button>
+
+        <button
+          type="button"
+          class="ai-suggestion"
+          data-question="How can I improve soil health?"
+        >
+          🌱 Soil health
+        </button>
+      </div>
+
+      <div
+        id="ai-answer"
+        class="ai-answer"
+        role="status"
+        aria-live="polite"
+      >
+        Your farming assistant is ready. Ask a question below.
+      </div>
+
+      <form id="ai-form" class="ai-form">
+        <label class="sr-only" for="ai-question">
+          Ask a farming question
+        </label>
+
+        <input
+          id="ai-question"
+          type="text"
+          placeholder="Ask about farming..."
+          autocomplete="off"
+          required
+        >
+
+        <button
+          id="ai-mic"
+          class="ai-mic"
+          type="button"
+          aria-label="Speak your question"
+          title="Speak your question"
+        >
+          🎙️
+        </button>
+
+        <button
+          class="ai-send"
+          type="submit"
+          aria-label="Send question"
+        >
+          ➤
+        </button>
+      </form>
+
+      <div class="ai-bottom">
+        <span id="ai-status">Ready to help</span>
+
+        <button
+          id="ai-speak"
+          type="button"
+          class="ai-speak"
+        >
+          🔊 Read answer
+        </button>
+      </div>
+
+      <p class="ai-disclaimer">
+        Farming guidance is informational. Check official weather alerts,
+        current market prices and local agricultural advice before making
+        important decisions.
+      </p>
+    </section>
+
+    <noscript>
+      <p class="card">
+        KrishiDost needs JavaScript to show live weather and assistant features.
+        Please enable JavaScript and reload.
+      </p>
+    </noscript>
+
   </main>
 
+  <!-- Footer -->
   <footer class="site-footer">
     <div class="wrap footer-inner">
+
       <div class="footer-brand">
         <div>
           <p class="footer-name"><b>Krishi</b>Dost</p>
-          <p class="footer-tag" data-i18n="tagline">Your farming companion</p>
+          <p class="footer-tag" data-i18n="tagline">
+            Your farming companion
+          </p>
         </div>
       </div>
+
       <div class="footer-text">
-       
-<div class="footer-text">
-  <p data-i18n="disclaimer">
-    KrishiDost gives weather-based guidance. It does not replace advice from your local agriculture office.
-  </p>
+        <p data-i18n="disclaimer">
+          KrishiDost gives weather-based guidance. It does not replace advice
+          from your local agriculture office.
+        </p>
 
-  <p class="credits">
-    Weather: <a href="https://open-meteo.com/" rel="noopener">Open-Meteo</a> ·
-    Rain radar: <a href="https://www.rainviewer.com/" rel="noopener">RainViewer</a> ·
-    Satellite soil &amp; sunshine: <a href="https://power.larc.nasa.gov/" rel="noopener">NASA POWER</a> ·
-    Cyclone &amp; flood events: <a href="https://eonet.gsfc.nasa.gov/" rel="noopener">NASA EONET</a> ·
-    River-flow flood data: <a href="https://open-meteo.com/en/docs/flood-api" rel="noopener">Open-Meteo Flood API</a> ·
-    Mandi prices: <a href="https://agmarknet.gov.in/" rel="noopener">Agmarknet</a> via <a href="https://data.gov.in/" rel="noopener">data.gov.in</a> ·
-    Farm news: <a href="https://news.google.com/" rel="noopener">Google News</a> ·
-    Map: <a href="https://www.openstreetmap.org/copyright" rel="noopener">OpenStreetMap</a> &amp; <a href="https://carto.com/" rel="noopener">CARTO</a> ·
-    Reverse geocoding: <a href="https://nominatim.org/" rel="noopener">Nominatim</a> &amp; <a href="https://www.bigdatacloud.com/" rel="noopener">BigDataCloud</a>
-  </p>
-</div>
-
-
+        <p class="credits">
+          Weather:
+          <a href="https://open-meteo.com/" rel="noopener noreferrer">Open-Meteo</a>
+          · Rain radar:
+          <a href="https://www.rainviewer.com/" rel="noopener noreferrer">RainViewer</a>
+          · Satellite soil and sunshine:
+          <a href="https://power.larc.nasa.gov/" rel="noopener noreferrer">NASA POWER</a>
+          · Cyclone and flood events:
+          <a href="https://eonet.gsfc.nasa.gov/" rel="noopener noreferrer">NASA EONET</a>
+          · River-flow flood data:
+          <a href="https://open-meteo.com/en/docs/flood-api" rel="noopener noreferrer">Open-Meteo Flood API</a>
+          · Mandi prices:
+          <a href="https://agmarknet.gov.in/" rel="noopener noreferrer">Agmarknet</a>
+          via
+          <a href="https://data.gov.in/" rel="noopener noreferrer">data.gov.in</a>
+          · Farm news:
+          <a href="https://news.google.com/" rel="noopener noreferrer">Google News</a>
+          · Map:
+          <a href="https://www.openstreetmap.org/copyright" rel="noopener noreferrer">OpenStreetMap</a>
+          and
+          <a href="https://carto.com/" rel="noopener noreferrer">CARTO</a>
+          · Reverse geocoding:
+          <a href="https://nominatim.org/" rel="noopener noreferrer">Nominatim</a>
+          and
+          <a href="https://www.bigdatacloud.com/" rel="noopener noreferrer">BigDataCloud</a>
+        </p>
       </div>
+
     </div>
   </footer>
 
+  <!-- Location selection dialog -->
   <dialog id="place-dialog" aria-labelledby="dlg-title">
     <div class="dlg">
+
       <div class="dlg-head">
-        <h2 id="dlg-title" data-i18n="dialogTitle">Choose your place</h2>
-        <button type="button" class="icon-btn" id="dlg-close" data-i18n-aria="close" aria-label="Close"><span data-icon="x" data-size="20"></span></button>
+        <h2 id="dlg-title" data-i18n="dialogTitle">
+          Choose your place
+        </h2>
+
+        <button
+          type="button"
+          class="icon-btn"
+          id="dlg-close"
+          data-i18n-aria="close"
+          aria-label="Close"
+        >
+          <span data-icon="x" data-size="20"></span>
+        </button>
       </div>
-      <label class="sr-only" for="place-search" data-i18n="searchLabel">Search for a place</label>
+
+      <label class="sr-only" for="place-search" data-i18n="searchLabel">
+        Search for a place
+      </label>
+
       <div class="search">
         <span data-icon="search" data-size="18"></span>
-        <input id="place-search" type="search" autocomplete="off" data-i18n-placeholder="searchPlaceholder" placeholder="Search village, town or district">
+
+        <input
+          id="place-search"
+          type="search"
+          autocomplete="off"
+          data-i18n-placeholder="searchPlaceholder"
+          placeholder="Search village, town or district"
+        >
       </div>
+
       <p id="dlg-status" class="dlg-status" role="status"></p>
       <ul id="place-results" class="results"></ul>
     </div>
   </dialog>
 
-  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <!-- Toast notifications -->
+  <div
+    id="toast"
+    class="toast"
+    role="status"
+    aria-live="polite"
+    hidden
+  ></div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <!-- Scripts -->
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+
   <script src="app.js" defer></script>
+  <script src="assistant.js" defer></script>
+
 </body>
 </html>
