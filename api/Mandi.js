@@ -1,404 +1,188 @@
 
+/* ───────── KrishiDost AI Assistant ───────── */
 
-const RESOURCE_ID = '9ef84268-d588-465a-a308-a864a43d0070';
-const API_BASE = `https://api.data.gov.in/resource/${RESOURCE_ID}`;
+(() => {
+  const root = document.getElementById("krishi-ai");
+  if (!root || root.dataset.initialized === "true") return;
+  root.dataset.initialized = "true";
 
-const COMMODITY = Object.freeze({
-  paddy: 'Paddy(Dhan)(Common)',
-  wheat: 'Wheat',
-  cotton: 'Cotton',
-  maize: 'Maize',
-  jute: 'Jute',
-  potato: 'Potato',
-});
+  const language = root.querySelector("#ai-language");
+  const greeting = root.querySelector("#ai-greeting");
+  const description = root.querySelector("#ai-description");
+  const questionInput = root.querySelector("#ai-question");
+  const form = root.querySelector("#ai-form");
+  const answer = root.querySelector("#ai-answer");
+  const mic = root.querySelector("#ai-mic");
+  const status = root.querySelector("#ai-status");
+  const speakButton = root.querySelector("#ai-speak");
 
-const PAGE_SIZE = 100;
-const MAX_PAGES = 5;
-const MAX_RESULTS = 6;
-const TIMEOUT_MS = 10000;
-const CACHE_SECONDS = 900;
-
-function send(res, status, body, cache = 'no-store') {
-  res.setHeader(
-    'Content-Type',
-    'application/json; charset=utf-8'
-  );
-  res.setHeader('Cache-Control', cache);
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-
-  return res.status(status).json(body);
-}
-
-function cleanString(value) {
-  if (typeof value !== 'string' && typeof value !== 'number') {
-    return '';
-  }
-
-  return String(value).trim();
-}
-
-function normalizeText(value) {
-  return cleanString(value)
-    .normalize('NFKC')
-    .replace(/\s+/g, ' ')
-    .toLocaleLowerCase('en-IN');
-}
-
-function toISO(value) {
-  const date = cleanString(value);
-
-  // ISO format: YYYY-MM-DD
-  let match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-
-  if (match) {
-    const [, year, month, day] = match;
-
-    return isValidDate(year, month, day)
-      ? `${year}-${month}-${day}`
-      : '';
-  }
-
-  // Agmarknet commonly uses DD/MM/YYYY.
-  match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(date);
-
-  if (!match) {
-    return '';
-  }
-
-  const [, day, month, year] = match;
-
-  if (!isValidDate(year, month, day)) {
-    return '';
-  }
-
-  return `${year}-${month}-${day}`;
-}
-
-function isValidDate(year, month, day) {
-  const y = Number(year);
-  const m = Number(month);
-  const d = Number(day);
-
-  if (m < 1 || m > 12 || d < 1 || d > 31) {
-    return false;
-  }
-
-  const date = new Date(Date.UTC(y, m - 1, d));
-
-  return (
-    date.getUTCFullYear() === y &&
-    date.getUTCMonth() === m - 1 &&
-    date.getUTCDate() === d
-  );
-}
-
-function parsePrice(value) {
-  if (
-    value === null ||
-    value === undefined ||
-    cleanString(value) === ''
-  ) {
-    return null;
-  }
-
-  const number = Number(value);
-
-  return Number.isFinite(number) && number > 0
-    ? number
-    : null;
-}
-
-function normalizeRecord(record) {
-  const modal = parsePrice(record.modal_price);
-
-  if (modal === null) {
-    return null;
-  }
-
-  const min = parsePrice(record.min_price);
-  const max = parsePrice(record.max_price);
-
-  return {
-    market: cleanString(record.market),
-    district: cleanString(record.district),
-    state: cleanString(record.state),
-    commodity: cleanString(record.commodity),
-    variety: cleanString(record.variety),
-    min: min !== null ? min : modal,
-    max: max !== null ? max : modal,
-    modal,
-    date: toISO(record.arrival_date),
+  const copy = {
+    "bn-IN": {
+      greeting: "নমস্কার! আমি কৃষিদোস্ত।",
+      description: "আপনার চাষাবাদ সম্পর্কে প্রশ্ন করুন।",
+      placeholder: "চাষাবাদ সম্পর্কে প্রশ্ন লিখুন...",
+      ready: "সাহায্য করতে প্রস্তুত",
+      listening: "আপনার কথা শুনছি...",
+      unsupported: "এই ব্রাউজারে ভয়েস ইনপুট সমর্থিত নয়। লিখে প্রশ্ন করুন।",
+      empty: "দয়া করে একটি প্রশ্ন লিখুন বা মাইক্রোফোন ব্যবহার করুন।",
+      fallback: "এই বিষয়ে নির্ভরযোগ্য তথ্য যাচাই করুন। আপনার ফসল ও এলাকার নাম জানালে আরও নির্দিষ্ট পরামর্শ পাওয়া সহজ হবে।",
+      rain: "ভারী বৃষ্টির আগে স্থানীয় আবহাওয়ার সতর্কতা দেখুন, জমির নিকাশি পরিষ্কার রাখুন এবং স্থানীয় কৃষি দপ্তরের পরামর্শ অনুসরণ করুন।",
+      market: "মাণ্ডির দাম জানতে ফসলের নাম, রাজ্য, জেলা ও বাজার নির্বাচন করুন। সরকারি বা স্থানীয় মাণ্ডির সর্বশেষ দাম যাচাই করুন।",
+      soil: "মাটির স্বাস্থ্য ভালো রাখতে মাটি পরীক্ষা করুন, পরীক্ষার ফল অনুযায়ী সার দিন এবং সম্ভব হলে জৈব পদার্থ যোগ করুন।",
+      error: "ভয়েস ইনপুট চালু করা যায়নি। অনুমতি পরীক্ষা করুন অথবা লিখে প্রশ্ন করুন।"
+    },
+    "hi-IN": {
+      greeting: "नमस्ते! मैं कृषिदोस्त हूँ।",
+      description: "खेती से जुड़ा अपना सवाल पूछें।",
+      placeholder: "खेती के बारे में सवाल लिखें...",
+      ready: "मदद के लिए तैयार",
+      listening: "आपकी बात सुन रहा हूँ...",
+      unsupported: "इस ब्राउज़र में आवाज़ से इनपुट उपलब्ध नहीं है। कृपया टाइप करें।",
+      empty: "कृपया सवाल लिखें या माइक्रोफ़ोन इस्तेमाल करें।",
+      fallback: "इस विषय की जानकारी किसी विश्वसनीय स्रोत से जाँचें। अपनी फसल और क्षेत्र का नाम बताने से अधिक उपयोगी सलाह मिल सकती है।",
+      rain: "भारी बारिश से पहले स्थानीय मौसम चेतावनी देखें, खेत की जल निकासी साफ रखें और स्थानीय कृषि विभाग की सलाह मानें।",
+      market: "मंडी भाव जानने के लिए फसल, राज्य, ज़िला और मंडी चुनें। सरकारी या स्थानीय मंडी के नवीनतम भाव की पुष्टि करें।",
+      soil: "मिट्टी की सेहत के लिए मिट्टी की जाँच कराएँ, परिणाम के अनुसार खाद डालें और संभव हो तो जैविक पदार्थ मिलाएँ।",
+      error: "वॉइस इनपुट शुरू नहीं हो पाया। अनुमति जाँचें या सवाल टाइप करें।"
+    },
+    "en-IN": {
+      greeting: "Hello! I'm KrishiDost.",
+      description: "Ask me a question about farming.",
+      placeholder: "Ask about farming...",
+      ready: "Ready to help",
+      listening: "Listening to you...",
+      unsupported: "Voice input is not supported in this browser. Please type your question.",
+      empty: "Please type a question or use the microphone.",
+      fallback: "Please verify this topic with a reliable source. Sharing your crop and location will help you find more specific guidance.",
+      rain: "Before heavy rain, check local weather alerts, keep field drainage clear, and follow advice from your local agricultural department.",
+      market: "To check mandi prices, choose the crop, state, district, and market. Verify the latest prices from an official or local mandi source.",
+      soil: "For healthier soil, get a soil test, apply fertilizer based on the results, and add organic matter where appropriate.",
+      error: "Voice input could not start. Check microphone permission or type your question."
+    }
   };
-}
 
-/**
- * Requests matching records from data.gov.in.
- * Throws on upstream errors instead of pretending that
- * missing records mean a different geographic scope.
- */
-async function query(key, commodity, state, district) {
-  const allRecords = [];
-
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const params = new URLSearchParams({
-      'api-key': key,
-      format: 'json',
-      limit: String(PAGE_SIZE),
-      offset: String(page * PAGE_SIZE),
-    });
-
-    params.set('filters[state.keyword]', state);
-    params.set('filters[commodity]', commodity);
-
-    if (district) {
-      params.set('filters[district]', district);
-    }
-
-    const controller = new AbortController();
-
-    const timer = setTimeout(
-      () => controller.abort(),
-      TIMEOUT_MS
-    );
-
-    let response;
-    let data;
-
-    try {
-      response = await fetch(
-        `${API_BASE}?${params.toString()}`,
-        {
-          method: 'GET',
-          headers: {
-            Accept: 'application/json',
-          },
-          signal: controller.signal,
-        }
-      );
-
-      if (!response.ok) {
-        // Do not include the request URL: it contains the API key.
-        throw new Error(`Upstream HTTP ${response.status}`);
-      }
-
-      data = await response.json();
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        throw new Error('Upstream request timed out');
-      }
-
-      if (error instanceof SyntaxError) {
-        throw new Error('Upstream returned invalid JSON');
-      }
-
-      throw error;
-    } finally {
-      clearTimeout(timer);
-    }
-
-    if (!data || !Array.isArray(data.records)) {
-      throw new Error('Unexpected upstream response format');
-    }
-
-    allRecords.push(...data.records);
-
-    if (data.records.length < PAGE_SIZE) {
-      break;
-    }
+  function currentCopy() {
+    return copy[language.value] || copy["en-IN"];
   }
 
-  return allRecords;
-}
-
-/**
- * Defensive filtering prevents records from another district
- * or state being presented as a local match.
- */
-function matchesLocation(record, state, district) {
-  if (normalizeText(record.state) !== normalizeText(state)) {
-    return false;
+  function setLanguageText() {
+    const t = currentCopy();
+    greeting.textContent = t.greeting;
+    description.textContent = t.description;
+    questionInput.placeholder = t.placeholder;
+    status.textContent = t.ready;
   }
 
-  if (
-    district &&
-    normalizeText(record.district) !== normalizeText(district)
-  ) {
-    return false;
+  function getDemoResponse(question) {
+    const q = question.toLocaleLowerCase();
+
+    if (/rain|heavy rain|বৃষ্টি|বর্ষা|बारिश|वर्षा|बाढ़|flood|জল জম|বন্যা/.test(q)) {
+      return currentCopy().rain;
+    }
+
+    if (/mandi|price|market|দাম|বাজার|মাণ্ডি|मंडी|भाव|कीमत|बाजार/.test(q)) {
+      return currentCopy().market;
+    }
+
+    if (/soil|fertili[sz]er|মাটি|সার|मिट्टी|खाद|उर्वरक/.test(q)) {
+      return currentCopy().soil;
+    }
+
+    return currentCopy().fallback;
   }
 
-  return true;
-}
-
-/**
- * Keep the newest record per state, district, market and variety.
- * Records without a market name are discarded because they
- * cannot be reliably identified as a market.
- */
-function normalizeMarkets(records, state, district) {
-  const byMarket = new Map();
-
-  for (const record of records) {
-    if (!matchesLocation(record, state, district)) {
-      continue;
+  function speak(text) {
+    if (!("speechSynthesis" in window)) {
+      status.textContent = "Speech output is not supported in this browser.";
+      return;
     }
 
-    const item = normalizeRecord(record);
+    window.speechSynthesis.cancel();
 
-    if (!item || !item.market) {
-      continue;
-    }
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = language.value;
+    utterance.rate = 0.95;
 
-    // Discard impossible price ranges.
-    if (item.min > item.max) {
-      continue;
-    }
-
-    const key = [
-      normalizeText(item.state),
-      normalizeText(item.district),
-      normalizeText(item.market),
-      normalizeText(item.variety),
-    ].join('|');
-
-    const previous = byMarket.get(key);
-
-    if (!previous) {
-      byMarket.set(key, item);
-      continue;
-    }
-
-    // Keep the newest dated record.
-    // If dates are equal or missing, retain the first record.
-    if (
-      item.date &&
-      (!previous.date || item.date > previous.date)
-    ) {
-      byMarket.set(key, item);
-    }
+    window.speechSynthesis.speak(utterance);
   }
 
-  return [...byMarket.values()].sort((a, b) => {
-    const dateComparison = (b.date || '').localeCompare(
-      a.date || ''
-    );
-
-    if (dateComparison !== 0) {
-      return dateComparison;
+  function ask(question) {
+    const cleanQuestion = question.trim();
+    if (!cleanQuestion) {
+      answer.textContent = currentCopy().empty;
+      return;
     }
 
-    return a.market.localeCompare(b.market);
+    const response = getDemoResponse(cleanQuestion);
+    answer.textContent = response;
+    status.textContent = currentCopy().ready;
+  }
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    ask(questionInput.value);
   });
-}
 
-module.exports = async function handler(req, res) {
-  if (req.method !== 'GET') {
-    res.setHeader('Allow', 'GET');
+  root.querySelectorAll(".ai-suggestion").forEach((button) => {
+    button.addEventListener("click", () => {
+      questionInput.value = button.dataset.question || "";
+      ask(questionInput.value);
+    });
+  });
 
-    return send(res, 405, {
-      error: 'method_not_allowed',
-      message: 'Only GET requests are supported.',
+  language.addEventListener("change", () => {
+    setLanguageText();
+    if (questionInput.value.trim()) {
+      questionInput.placeholder = currentCopy().placeholder;
+    }
+  });
+
+  speakButton.addEventListener("click", () => {
+    const text = answer.textContent.trim();
+    if (text) speak(text);
+  });
+
+  const SpeechRecognition =
+    window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (!SpeechRecognition) {
+    mic.disabled = true;
+    mic.title = currentCopy().unsupported;
+    status.textContent = currentCopy().unsupported;
+  } else {
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    mic.addEventListener("click", () => {
+      try {
+        recognition.lang = language.value;
+        status.textContent = currentCopy().listening;
+        mic.classList.add("is-listening");
+        recognition.start();
+      } catch {
+        status.textContent = currentCopy().error;
+        mic.classList.remove("is-listening");
+      }
+    });
+
+    recognition.addEventListener("result", (event) => {
+      const transcript = event.results[0][0].transcript;
+      questionInput.value = transcript;
+      ask(transcript);
+    });
+
+    recognition.addEventListener("error", () => {
+      status.textContent = currentCopy().error;
+    });
+
+    recognition.addEventListener("end", () => {
+      mic.classList.remove("is-listening");
+      if (status.textContent === currentCopy().listening) {
+        status.textContent = currentCopy().ready;
+      }
     });
   }
 
-  const apiKey = process.env.DATA_GOV_API_KEY;
-
-  if (!apiKey) {
-    return send(res, 503, {
-      error: 'not_configured',
-      message: 'The mandi API is not configured on the server.',
-    });
-  }
-
-  const crop = cleanString(req.query.crop).toLowerCase();
-  const commodity = COMMODITY[crop];
-
-  const state = cleanString(req.query.state);
-  const district = cleanString(req.query.district);
-
-  if (!commodity || !state) {
-    return send(res, 400, {
-      error: 'bad_request',
-      message: 'A supported crop and state are required.',
-      supportedCrops: Object.keys(COMMODITY),
-    });
-  }
-
-  if (state.length > 100 || district.length > 100) {
-    return send(res, 400, {
-      error: 'bad_request',
-      message: 'The state or district name is too long.',
-    });
-  }
-
-  try {
-    // Critical fix:
-    // If a district is supplied, search ONLY that district.
-    // Never silently broaden the search to the entire state.
-    const records = await query(
-      apiKey,
-      commodity,
-      state,
-      district
-    );
-
-    const markets = normalizeMarkets(
-      records,
-      state,
-      district
-    );
-
-    const scope = district ? 'district' : 'state';
-
-    const result = markets.slice(0, MAX_RESULTS);
-
-    return send(
-      res,
-      200,
-      {
-        crop,
-        commodity,
-        state,
-        district: district || null,
-        scope,
-        unit: 'INR per quintal',
-
-        // Number of returned market entries.
-        count: result.length,
-
-        // Number of distinct market/variety entries found.
-        totalCount: markets.length,
-
-        // True means the configured page limit may have truncated
-        // the upstream search.
-        possiblyTruncated: records.length >= PAGE_SIZE * MAX_PAGES,
-
-        markets: result,
-        updatedAt: new Date().toISOString(),
-        source: 'data.gov.in',
-        message: result.length
-          ? null
-          : district
-            ? 'No matching mandi prices were found for this district and crop. No state-wide fallback was applied.'
-            : 'No matching mandi prices were found for this state and crop.',
-      },
-      `public, max-age=${CACHE_SECONDS}`
-    );
-  } catch (error) {
-    // Never log the API key, request URL, or credentials.
-    console.error('Mandi API request failed:', {
-  name: error.name,
-  message: error.message,
-  causeName: error.cause?.name,
-  causeMessage: error.cause?.message,
-  code: error.cause?.code,
-  syscall: error.cause?.syscall,
-  hostname: error.cause?.hostname
-});
-
-    return send(res, 502, {
-      error: 'upstream_failed',
-      message:
-        'Could not retrieve mandi prices. Please try again later.',
-    });
-  }
-};
+  setLanguageText();
+})();
